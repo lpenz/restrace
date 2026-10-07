@@ -65,6 +65,35 @@ pub(crate) fn split_args(input: &str) -> Vec<&str> {
     parts
 }
 
+/// Like [`split_args`], but also ignores commas inside `[ ... ]` groups,
+/// such as the string arrays of `execve(2)`.
+pub(crate) fn split_args_nested(input: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let mut quoted = false;
+    let mut escaped = false;
+    let mut depth = 0u32;
+    for (i, c) in input.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match c {
+            '\\' if quoted => escaped = true,
+            '"' => quoted = !quoted,
+            '[' if !quoted => depth += 1,
+            ']' if !quoted => depth = depth.saturating_sub(1),
+            ',' if !quoted && depth == 0 => {
+                parts.push(&input[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&input[start..]);
+    parts
+}
+
 /// Parses a double-quoted string as formatted by the `{:?}` placeholder.
 pub(crate) fn unquote(input: &str, part: &'static str) -> Result<String, ParseError> {
     let error = || ParseError::new(part, input);
@@ -136,6 +165,22 @@ mod tests {
     #[test]
     fn split_quoted_escaped_quote() {
         assert_eq!(split_args("\"a\\\",b\", c"), ["\"a\\\",b\"", " c"]);
+    }
+
+    #[test]
+    fn split_nested_arrays() {
+        assert_eq!(
+            split_args_nested("\"p\", [\"a\", \"b\"], [\"c\"]"),
+            ["\"p\"", " [\"a\", \"b\"]", " [\"c\"]"]
+        );
+    }
+
+    #[test]
+    fn split_nested_quoted_comma() {
+        assert_eq!(
+            split_args_nested("\"p\", [\"a, b\", \"c\"]"),
+            ["\"p\"", " [\"a, b\", \"c\"]"]
+        );
     }
 
     #[test]
