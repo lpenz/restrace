@@ -16,6 +16,7 @@ const NAMES: &[(i32, &str)] = &[
     (5, "EIO"),
     (9, "EBADF"),
     (11, "EAGAIN"),
+    (12, "ENOMEM"),
     (13, "EACCES"),
     (17, "EEXIST"),
     (20, "ENOTDIR"),
@@ -71,6 +72,8 @@ impl Errno {
     pub const ENAMETOOLONG: Self = Self(36);
     /// Resource temporarily unavailable.
     pub const EAGAIN: Self = Self(11);
+    /// Out of memory.
+    pub const ENOMEM: Self = Self(12);
     /// Broken pipe.
     pub const EPIPE: Self = Self(32);
     /// Function not implemented.
