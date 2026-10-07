@@ -4,6 +4,7 @@
 
 //! System call definitions: arguments and return values.
 
+pub mod close;
 pub mod creat;
 pub mod dirfd;
 pub mod errno;
@@ -13,6 +14,7 @@ pub mod open;
 pub mod openat;
 pub mod parse;
 
+pub use close::{Close, CloseResult};
 pub use creat::Creat;
 pub use dirfd::DirFd;
 pub use errno::Errno;
