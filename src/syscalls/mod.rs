@@ -17,6 +17,9 @@ pub mod mode;
 pub mod open;
 pub mod openat;
 pub mod parse;
+pub mod rename;
+pub mod renameat;
+pub mod renameat2;
 pub mod result;
 pub mod rmdir;
 
@@ -33,5 +36,8 @@ pub use mode::Mode;
 pub use open::{Open, OpenFlags};
 pub use openat::Openat;
 pub use parse::ParseError;
+pub use rename::Rename;
+pub use renameat::Renameat;
+pub use renameat2::{Renameat2, Renameat2Flags};
 pub use result::OkResult;
 pub use rmdir::Rmdir;
