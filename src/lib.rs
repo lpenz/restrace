@@ -10,6 +10,7 @@
 #![allow(rustdoc::private_intra_doc_links)]
 
 mod cli;
+pub mod syscalls;
 
 use clap::Parser;
 use std::error::Error;
