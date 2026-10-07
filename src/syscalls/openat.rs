@@ -7,7 +7,9 @@
 //! [`openat(2)`]: https://man7.org/linux/man-pages/man2/openat.2.html
 
 use super::dirfd::DirFd;
-use super::open::{Mode, OpenFlags, OpenResult};
+use super::fd::FdResult;
+use super::mode::Mode;
+use super::open::OpenFlags;
 use super::parse::{self, ParseError};
 use std::ffi::CString;
 use std::fmt;
@@ -34,7 +36,7 @@ pub struct Openat {
     /// (`O_CREAT` or `O_TMPFILE`), which is when the kernel reads it.
     pub mode: Option<Mode>,
     /// Return value: a file descriptor, or the errno that caused the failure.
-    pub result: OpenResult,
+    pub result: FdResult,
 }
 
 impl Openat {
@@ -60,7 +62,7 @@ impl Openat {
             pathname: CString::new(pathname.as_ref()).expect("pathname contains NUL byte"),
             flags,
             mode,
-            result: OpenResult::from_raw(raw_result),
+            result: FdResult::from_raw(raw_result),
         }
     }
 }
@@ -107,7 +109,7 @@ impl FromStr for Openat {
             pathname: CString::new(pathname).map_err(|_| ParseError::new("pathname", parts[1]))?,
             flags,
             mode,
-            result: OpenResult::from_str(result)?,
+            result: FdResult::from_str(result)?,
         })
     }
 }
@@ -159,7 +161,7 @@ mod tests {
             Openat::from_str("openat(4, \"f\", O_WRONLY|O_CREAT, 0600) = -1 EACCES").unwrap();
         assert_eq!(openat.dirfd, DirFd(4));
         assert_eq!(openat.mode, Some(Mode(0o600)));
-        assert_eq!(openat.result, OpenResult::Errno(Errno::EACCES));
+        assert_eq!(openat.result, FdResult::Errno(Errno::EACCES));
         assert_eq!(openat.pathname.to_str().unwrap(), "f");
     }
 

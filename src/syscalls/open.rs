@@ -6,7 +6,8 @@
 //!
 //! [`open(2)`]: https://man7.org/linux/man-pages/man2/open.2.html
 
-use super::errno::Errno;
+use super::fd::FdResult;
+use super::mode::Mode;
 use super::parse::{self, ParseError};
 use std::ffi::CString;
 use std::fmt;
@@ -55,7 +56,7 @@ pub struct Open {
     /// (`O_CREAT` or `O_TMPFILE`), which is when the kernel reads it.
     pub mode: Option<Mode>,
     /// Return value: a file descriptor, or the errno that caused the failure.
-    pub result: OpenResult,
+    pub result: FdResult,
 }
 
 impl Open {
@@ -79,7 +80,7 @@ impl Open {
             pathname: CString::new(pathname.as_ref()).expect("pathname contains NUL byte"),
             flags,
             mode,
-            result: OpenResult::from_raw(raw_result),
+            result: FdResult::from_raw(raw_result),
         }
     }
 }
@@ -123,132 +124,8 @@ impl FromStr for Open {
             pathname: CString::new(pathname).map_err(|_| ParseError::new("pathname", parts[0]))?,
             flags,
             mode,
-            result: OpenResult::from_str(result)?,
+            result: FdResult::from_str(result)?,
         })
-    }
-}
-
-/// The return value of `open(2)`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OpenResult {
-    /// The file descriptor that was opened.
-    Fd(i32),
-    /// The error that prevented the file from being opened.
-    Errno(Errno),
-}
-
-impl OpenResult {
-    /// Converts a raw `open(2)` return value into an [`OpenResult`].
-    ///
-    /// The kernel reports errors as `-errno` in the range -1..=-4095.
-    #[must_use]
-    pub fn from_raw(raw: i64) -> Self {
-        if (-4095..=-1).contains(&raw) {
-            Self::Errno(Errno(-raw as i32))
-        } else {
-            Self::Fd(raw as i32)
-        }
-    }
-
-    /// Returns the file descriptor, if the call succeeded.
-    #[must_use]
-    pub fn fd(self) -> Option<i32> {
-        match self {
-            Self::Fd(fd) => Some(fd),
-            Self::Errno(_) => None,
-        }
-    }
-}
-
-impl fmt::Display for OpenResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Fd(fd) => write!(f, "{fd}"),
-            Self::Errno(errno) => write!(f, "-1 {errno}"),
-        }
-    }
-}
-
-/// Parses a return value as [`Display`](fmt::Display) writes it: a file
-/// descriptor, or `-1` followed by the errno.
-impl FromStr for OpenResult {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> Result<Self, ParseError> {
-        let s = s.trim();
-        let error = || ParseError::new("return value", s);
-        if let Some(errno) = s.strip_prefix("-1 ") {
-            return Ok(Self::Errno(
-                Errno::from_str(errno.trim()).map_err(|_| error())?,
-            ));
-        }
-        if s == "-1" {
-            return Err(error());
-        }
-        s.parse::<i32>().map(Self::Fd).map_err(|_| error())
-    }
-}
-
-/// The `mode_t` argument of `open(2)`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct Mode(pub u32);
-
-impl Mode {
-    /// Owner has read, write, and execute permission.
-    pub const S_IRWXU: Self = Self(0o700);
-    /// Owner has read permission.
-    pub const S_IRUSR: Self = Self(0o400);
-    /// Owner has write permission.
-    pub const S_IWUSR: Self = Self(0o200);
-    /// Owner has execute permission.
-    pub const S_IXUSR: Self = Self(0o100);
-    /// Group has read, write, and execute permission.
-    pub const S_IRWXG: Self = Self(0o070);
-    /// Group has read permission.
-    pub const S_IRGRP: Self = Self(0o040);
-    /// Group has write permission.
-    pub const S_IWGRP: Self = Self(0o020);
-    /// Group has execute permission.
-    pub const S_IXGRP: Self = Self(0o010);
-    /// Others have read, write, and execute permission.
-    pub const S_IRWXO: Self = Self(0o007);
-    /// Others have read permission.
-    pub const S_IROTH: Self = Self(0o004);
-    /// Others have write permission.
-    pub const S_IWOTH: Self = Self(0o002);
-    /// Others have execute permission.
-    pub const S_IXOTH: Self = Self(0o001);
-    /// Set-user-ID on execution.
-    pub const S_ISUID: Self = Self(0o4000);
-    /// Set-group-ID on execution.
-    pub const S_ISGID: Self = Self(0o2000);
-    /// Sticky bit.
-    pub const S_ISVTX: Self = Self(0o1000);
-}
-
-impl fmt::Display for Mode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:04o}", self.0)
-    }
-}
-
-/// Parses a mode as [`Display`](fmt::Display) writes it: octal digits with a
-/// leading zero, or with an explicit `0o` or `0x` prefix.
-impl FromStr for Mode {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> Result<Self, ParseError> {
-        let s = s.trim();
-        let error = || ParseError::new("mode", s);
-        if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-            return Ok(Self(u32::from_str_radix(hex, 16).map_err(|_| error())?));
-        }
-        let octal = s
-            .strip_prefix("0o")
-            .or_else(|| s.strip_prefix("0O"))
-            .unwrap_or(s);
-        u32::from_str_radix(octal, 8).map(Self).map_err(|_| error())
     }
 }
 
@@ -448,6 +325,7 @@ fn parse_number(token: &str, part: &'static str) -> Result<u32, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::syscalls::errno::Errno;
 
     #[test]
     fn display_read_only() {
@@ -477,31 +355,6 @@ mod tests {
     #[test]
     fn tmpfile_contains_directory() {
         assert!(OpenFlags::O_TMPFILE.contains(OpenFlags::O_DIRECTORY));
-    }
-
-    #[test]
-    fn from_raw_fd() {
-        assert_eq!(OpenResult::from_raw(3), OpenResult::Fd(3));
-        assert_eq!(OpenResult::from_raw(0), OpenResult::Fd(0));
-        assert_eq!(OpenResult::from_raw(4096), OpenResult::Fd(4096));
-    }
-
-    #[test]
-    fn from_raw_errno() {
-        assert_eq!(OpenResult::from_raw(-2), OpenResult::Errno(Errno::ENOENT));
-        assert_eq!(OpenResult::from_raw(-1), OpenResult::Errno(Errno(1)));
-    }
-
-    #[test]
-    fn fd() {
-        assert_eq!(OpenResult::Fd(3).fd(), Some(3));
-        assert_eq!(OpenResult::Errno(Errno::ENOENT).fd(), None);
-    }
-
-    #[test]
-    fn display_mode() {
-        assert_eq!(Mode::S_IRUSR.to_string(), "0400");
-        assert_eq!(Mode(0o644).to_string(), "0644");
     }
 
     #[test]
@@ -544,31 +397,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_mode() {
-        assert_eq!(Mode::from_str("0644"), Ok(Mode(0o644)));
-        assert_eq!(Mode::from_str("644"), Ok(Mode(0o644)));
-        assert_eq!(Mode::from_str("0o644"), Ok(Mode(0o644)));
-        assert_eq!(Mode::from_str("0x1ff"), Ok(Mode(0o777)));
-        assert!(Mode::from_str("899").is_err());
-        assert!(Mode::from_str("").is_err());
-    }
-
-    #[test]
-    fn parse_result() {
-        assert_eq!(OpenResult::from_str("3"), Ok(OpenResult::Fd(3)));
-        assert_eq!(
-            OpenResult::from_str("-1 ENOENT"),
-            Ok(OpenResult::Errno(Errno::ENOENT))
-        );
-        assert_eq!(
-            OpenResult::from_str("-1 9999"),
-            Ok(OpenResult::Errno(Errno(9999)))
-        );
-        assert!(OpenResult::from_str("-1").is_err());
-        assert!(OpenResult::from_str("x").is_err());
-    }
-
-    #[test]
     fn parse_success() {
         let open =
             Open::from_str("open(\"/tmp/file\", O_WRONLY|O_CREAT|O_TRUNC, 0644) = 3").unwrap();
@@ -588,7 +416,7 @@ mod tests {
     fn parse_failure() {
         let open = Open::from_str("open(\"/nonexistent\", O_RDONLY) = -1 ENOENT").unwrap();
         assert_eq!(open.mode, None);
-        assert_eq!(open.result, OpenResult::Errno(Errno::ENOENT));
+        assert_eq!(open.result, FdResult::Errno(Errno::ENOENT));
         assert_eq!(open.pathname.to_str().unwrap(), "/nonexistent");
     }
 
