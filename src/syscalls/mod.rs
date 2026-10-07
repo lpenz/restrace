@@ -18,6 +18,7 @@ pub mod open;
 pub mod openat;
 pub mod parse;
 pub mod result;
+pub mod rmdir;
 
 pub use chdir::Chdir;
 pub use close::Close;
@@ -33,3 +34,4 @@ pub use open::{Open, OpenFlags};
 pub use openat::Openat;
 pub use parse::ParseError;
 pub use result::OkResult;
+pub use rmdir::Rmdir;
