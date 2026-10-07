@@ -4,22 +4,28 @@
 
 //! System call definitions: arguments and return values.
 
+pub mod chdir;
 pub mod close;
 pub mod creat;
 pub mod dirfd;
 pub mod errno;
+pub mod fchdir;
 pub mod fd;
 pub mod mode;
 pub mod open;
 pub mod openat;
 pub mod parse;
+pub mod result;
 
-pub use close::{Close, CloseResult};
+pub use chdir::Chdir;
+pub use close::Close;
 pub use creat::Creat;
 pub use dirfd::DirFd;
 pub use errno::Errno;
+pub use fchdir::Fchdir;
 pub use fd::FdResult;
 pub use mode::Mode;
 pub use open::{Open, OpenFlags};
 pub use openat::Openat;
 pub use parse::ParseError;
+pub use result::OkResult;
