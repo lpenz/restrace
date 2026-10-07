@@ -5,6 +5,8 @@
 //! System call definitions: arguments and return values.
 
 pub mod chdir;
+pub mod clone;
+pub mod clone3;
 pub mod close;
 pub mod creat;
 pub mod dirfd;
@@ -26,6 +28,8 @@ pub mod rmdir;
 pub mod vfork;
 
 pub use chdir::Chdir;
+pub use clone::{Clone, CloneFlags};
+pub use clone3::{Clone3, Clone3Args};
 pub use close::Close;
 pub use creat::Creat;
 pub use dirfd::DirFd;
