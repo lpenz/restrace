@@ -4,7 +4,7 @@
 
 //! A generic system call, for calls without a dedicated decoder.
 //!
-//! [`Syscall`] holds a vector of [`Arg`] values and a [`Ret`] result, so that
+//! [`Generic`] holds a vector of [`Arg`] values and a [`Ret`] result, so that
 //! any system call representation can be read and written even when no
 //! dedicated type parses it.
 
@@ -141,7 +141,7 @@ impl FromStr for Ret {
 /// A system call with a vector of generic arguments and a generic return
 /// value, used for calls that no dedicated type parses.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Syscall {
+pub struct Generic {
     /// Name of the system call.
     pub name: String,
     /// Argument values, in call order.
@@ -150,7 +150,7 @@ pub struct Syscall {
     pub result: Ret,
 }
 
-impl Syscall {
+impl Generic {
     /// Builds a generic system call record from its name, its raw argument
     /// words and its raw return value.
     ///
@@ -167,7 +167,7 @@ impl Syscall {
     }
 }
 
-impl fmt::Display for Syscall {
+impl fmt::Display for Generic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}(", self.name)?;
         for (i, arg) in self.args.iter().enumerate() {
@@ -182,7 +182,7 @@ impl fmt::Display for Syscall {
 
 /// Parses a line as [`Display`](fmt::Display) writes it:
 /// `name(arg, ...) = value` or `... = -1 ENOENT`.
-impl FromStr for Syscall {
+impl FromStr for Generic {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, ParseError> {
@@ -217,21 +217,21 @@ mod tests {
 
     #[test]
     fn display_success() {
-        let syscall = Syscall::from_raw("cacheflush", vec![0x1000, 0x20, 3], 0);
+        let syscall = Generic::from_raw("cacheflush", vec![0x1000, 0x20, 3], 0);
         assert_eq!(syscall.to_string(), "cacheflush(0x1000, 0x20, 0x3) = 0");
         assert_eq!(syscall.result, Ret::Value(0));
     }
 
     #[test]
     fn display_failure() {
-        let syscall = Syscall::from_raw("syscall_0x123", vec![], -2);
+        let syscall = Generic::from_raw("syscall_0x123", vec![], -2);
         assert_eq!(syscall.to_string(), "syscall_0x123() = -1 ENOENT");
         assert_eq!(syscall.result, Ret::Errno(Errno::ENOENT));
     }
 
     #[test]
     fn display_typed_arguments() {
-        let syscall = Syscall {
+        let syscall = Generic {
             name: "mystery".to_string(),
             args: vec![
                 Arg::Unsigned(42),
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn parse_success() {
-        let syscall = Syscall::from_str("cacheflush(0x1000, 0x20, 0x3) = 0").unwrap();
+        let syscall = Generic::from_str("cacheflush(0x1000, 0x20, 0x3) = 0").unwrap();
         assert_eq!(syscall.name, "cacheflush");
         assert_eq!(
             syscall.args,
@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn parse_nested_and_quoted() {
         let syscall =
-            Syscall::from_str("mystery(1, -2, \"a, b\", [\"x\", \"y\"]) = -1 EINVAL").unwrap();
+            Generic::from_str("mystery(1, -2, \"a, b\", [\"x\", \"y\"]) = -1 EINVAL").unwrap();
         assert_eq!(syscall.args[0], Arg::Unsigned(1));
         assert_eq!(syscall.args[1], Arg::Signed(-2));
         assert_eq!(syscall.args[2], Arg::Str(CString::new("a, b").unwrap()));
@@ -293,19 +293,19 @@ mod tests {
 
     #[test]
     fn parse_empty_arguments() {
-        let syscall = Syscall::from_str("mystery() = 3").unwrap();
+        let syscall = Generic::from_str("mystery() = 3").unwrap();
         assert!(syscall.args.is_empty());
         assert_eq!(syscall.result, Ret::Value(3));
     }
 
     #[test]
     fn parse_invalid() {
-        assert!(Syscall::from_str("mystery(0x1) 0").is_err());
-        assert!(Syscall::from_str("mystery 0x1) = 0").is_err());
-        assert!(Syscall::from_str("(0x1) = 0").is_err());
-        assert!(Syscall::from_str("my stery(0x1) = 0").is_err());
-        assert!(Syscall::from_str("mystery(0xzz) = 0").is_err());
-        assert!(Syscall::from_str("").is_err());
+        assert!(Generic::from_str("mystery(0x1) 0").is_err());
+        assert!(Generic::from_str("mystery 0x1) = 0").is_err());
+        assert!(Generic::from_str("(0x1) = 0").is_err());
+        assert!(Generic::from_str("my stery(0x1) = 0").is_err());
+        assert!(Generic::from_str("mystery(0xzz) = 0").is_err());
+        assert!(Generic::from_str("").is_err());
     }
 
     #[test]
@@ -316,7 +316,7 @@ mod tests {
             "mystery(42, -7, 0xdead, \"a, b\") = -1",
             "mystery(1, 0x2, \"quote\\\"here\", [\"x\", \"y\"]) = 4294967296",
         ] {
-            assert_eq!(Syscall::from_str(line).unwrap().to_string(), line);
+            assert_eq!(Generic::from_str(line).unwrap().to_string(), line);
         }
     }
 }
