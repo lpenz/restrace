@@ -15,8 +15,11 @@ keywords = ["command-line"]
 [dependencies]
 clap = { version = "4.6.2", features = ["derive"] }
 color-eyre = "0.6.5"
-tokio = { version = "1.53.0", features = ["macros", "rt"] }
+tokio = { version = "1.53.0", features = ["macros", "process", "rt"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[features]
+tokio = []
 
 [build-dependencies]
 clap = { version = "4.6.2", features = ["derive"] }

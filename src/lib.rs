@@ -14,11 +14,15 @@ pub mod line;
 pub mod stdprocess;
 pub mod syscalls;
 
+/// Tokio integration, only compiled with the `tokio` feature.
+#[cfg(feature = "tokio")]
+pub mod tokio;
+
 use clap::Parser;
 use std::error::Error;
 
 /// main function, the single pub function in this lib.
-#[tokio::main(flavor = "current_thread")]
+#[::tokio::main(crate = "::tokio", flavor = "current_thread")]
 pub async fn main() -> Result<(), Box<dyn Error>> {
     color_eyre::install()?;
     tracing_subscriber::fmt()
