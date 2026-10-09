@@ -10,6 +10,7 @@
 #![allow(rustdoc::private_intra_doc_links)]
 
 mod cli;
+pub mod line;
 pub mod syscalls;
 
 use clap::Parser;
