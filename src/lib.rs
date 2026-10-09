@@ -11,6 +11,7 @@
 
 mod cli;
 pub mod line;
+pub mod stdprocess;
 pub mod syscalls;
 
 use clap::Parser;
