@@ -10,6 +10,7 @@ jobs:
       coveralls: true
       deb: true
       rpm: true
+      dependencies_debian: strace
       release_files: |
         restrace restrace.1
       # publish_cratesio: true
