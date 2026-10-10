@@ -31,8 +31,8 @@ pub fn under_strace(cmd: Command) -> Command {
 /// Lines of strace output that do not form a complete, single system call are
 /// skipped, so that the stream only yields the parsed trace: fragments such as
 /// `<unfinished ...>`, `<... resumed>` and the `+++ exited ... +++` messages.
-/// The lines strace prints before the first `fork`/`clone`, which carry no
-/// `[pid ...]` prefix, are skipped for the same reason.
+/// Lines of the top-level process carry no `[pid ...]` prefix and are yielded
+/// with a `None` pid.
 pub struct LineStream {
     child: Child,
     lines: Lines<BufReader<ChildStderr>>,
@@ -156,6 +156,11 @@ mod tests {
         }
         lines.wait().await.expect("wait for strace");
         assert!(!collected.is_empty());
-        assert!(collected.iter().all(|line| line.pid > 0));
+        assert!(
+            collected
+                .iter()
+                .filter_map(|line| line.pid)
+                .all(|pid| pid > 0)
+        );
     }
 }
