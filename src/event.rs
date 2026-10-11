@@ -12,8 +12,8 @@
 //!
 //! strace only prints the bare `<pid> ` prefix when it is tracing a command
 //! with `--follow-forks` and redirecting the trace with `-o`, as done by
-//! [`crate::tokio::LineStream`]; without it, lines of the top-level process
-//! have no pid and are not parsed into [`Line`]s.
+//! [`crate::tokio::EventStream`]; without it, lines of the top-level process
+//! have no pid and are not parsed into [`Event`]s.
 //!
 //! The bracketed `[pid  251751]` form is also accepted when parsing, and is how
 //! [`fmt::Display`] renders lines.
@@ -26,7 +26,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// A fully parsed line of strace output: a PID, a timestamp, and a system
 /// call.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Line {
+pub struct Event {
     /// The ID of the traced process that performed the call.
     ///
     /// Padded to five digits when displayed, as strace does.
@@ -84,7 +84,7 @@ fn parse_time(input: &str) -> Result<(SystemTime, &str), ParseError> {
     ))
 }
 
-impl Line {
+impl Event {
     /// Builds a line record from its PID, time and system call.
     #[must_use]
     pub fn from_parts(pid: u32, time: SystemTime, syscall: Syscall) -> Self {
@@ -92,7 +92,7 @@ impl Line {
     }
 }
 
-impl fmt::Display for Line {
+impl fmt::Display for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[pid {:5}] ", self.pid)?;
         let since_epoch = self
@@ -112,7 +112,7 @@ impl fmt::Display for Line {
 /// Parses a line as [`fmt::Display`] writes it, as strace prints it
 /// with `--follow-forks`, `--absolute-timestamps=format:unix,precision:us`
 /// and a trace redirected with `-o`.
-impl FromStr for Line {
+impl FromStr for Event {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, ParseError> {
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn display() {
-        let line = Line::from_parts(
+        let line = Event::from_parts(
             12345,
             epoch(1_699_999_999, 123_456),
             Syscall::from_str("open(\"/tmp\", O_RDONLY) = 3").unwrap(),
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn display_small_pid() {
-        let line = Line::from_parts(
+        let line = Event::from_parts(
             42,
             epoch(1_700_000_000, 1),
             Syscall::from_str("close(0) = 0").unwrap(),
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn parse() {
         let line =
-            Line::from_str("[pid  1234] 1699999999.123456 open(\"/tmp\", O_RDONLY) = 3").unwrap();
+            Event::from_str("[pid  1234] 1699999999.123456 open(\"/tmp\", O_RDONLY) = 3").unwrap();
         assert_eq!(line.pid, 1234);
         assert_eq!(line.time, epoch(1_699_999_999, 123_456));
         assert!(matches!(line.syscall, Syscall::Open(_)));
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn parse_generic() {
-        let line = Line::from_str("[pid 1] 1700000000.000000 spill(0x1, 0x2) = 0").unwrap();
+        let line = Event::from_str("[pid 1] 1700000000.000000 spill(0x1, 0x2) = 0").unwrap();
         assert_eq!(line.pid, 1);
         assert!(matches!(line.syscall, Syscall::Generic(_)));
     }
@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn parse_bare_pid() {
         let line =
-            Line::from_str("251751 1700000000.000000 execve(\"/bin/echo\", [\"echo\"], []) = 0")
+            Event::from_str("251751 1700000000.000000 execve(\"/bin/echo\", [\"echo\"], []) = 0")
                 .unwrap();
         assert_eq!(line.pid, 251751);
         assert_eq!(line.time, epoch(1_700_000_000, 0));
@@ -186,22 +186,24 @@ mod tests {
 
     #[test]
     fn parse_bare_pid_padded() {
-        let line = Line::from_str("123  1700000000.000000 close(0) = 0").unwrap();
+        let line = Event::from_str("123  1700000000.000000 close(0) = 0").unwrap();
         assert_eq!(line.pid, 123);
         assert!(matches!(line.syscall, Syscall::Close(_)));
     }
 
     #[test]
     fn parse_invalid() {
-        assert!(Line::from_str("").is_err());
-        assert!(Line::from_str("open(\"/tmp\", O_RDONLY) = 3").is_err());
-        assert!(Line::from_str("1700000000.000000 execve(\"/bin/echo\", []) = 0").is_err());
+        assert!(Event::from_str("").is_err());
+        assert!(Event::from_str("open(\"/tmp\", O_RDONLY) = 3").is_err());
+        assert!(Event::from_str("1700000000.000000 execve(\"/bin/echo\", []) = 0").is_err());
         assert!(
-            Line::from_str("[pid abc] 1700000000.000000 open(\"/tmp\", O_RDONLY) = 3").is_err()
+            Event::from_str("[pid abc] 1700000000.000000 open(\"/tmp\", O_RDONLY) = 3").is_err()
         );
-        assert!(Line::from_str("[pid 1] 1700000000 open(\"/tmp\", O_RDONLY) = 3").is_err());
-        assert!(Line::from_str("[pid 1] 1700000000.9999999 open(\"/tmp\", O_RDONLY) = 3").is_err());
-        assert!(Line::from_str("[pid 1] 1700000000.000000").is_err());
+        assert!(Event::from_str("[pid 1] 1700000000 open(\"/tmp\", O_RDONLY) = 3").is_err());
+        assert!(
+            Event::from_str("[pid 1] 1700000000.9999999 open(\"/tmp\", O_RDONLY) = 3").is_err()
+        );
+        assert!(Event::from_str("[pid 1] 1700000000.000000").is_err());
     }
 
     #[test]
@@ -211,7 +213,7 @@ mod tests {
             "[pid    42] 1700000000.000001 close(0) = 0",
             "[pid  2345] 1700000000.050000 execve(\"/bin/echo\", [\"echo\"], []) = 0",
         ] {
-            assert_eq!(Line::from_str(line).unwrap().to_string(), line);
+            assert_eq!(Event::from_str(line).unwrap().to_string(), line);
         }
     }
 }

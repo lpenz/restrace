@@ -3,33 +3,36 @@
 // file 'LICENSE', which is part of this source code package.
 
 //! System call definitions: arguments and return values.
+//!
+//! The concrete types are re-exported here; the modules that hold them are
+//! private, so the layout of this directory is not part of the public API.
 
-pub mod chdir;
-pub mod clone;
-pub mod clone3;
-pub mod close;
-pub mod creat;
-pub mod dirfd;
-pub mod errno;
-pub mod execve;
-pub mod execveat;
-pub mod fchdir;
-pub mod fd;
-pub mod fork;
-pub mod generic;
-pub mod mkdir;
-pub mod mkdirat;
-pub mod mode;
-pub mod open;
-pub mod openat;
-pub mod parse;
-pub mod rename;
-pub mod renameat;
-pub mod renameat2;
-pub mod result;
-pub mod rmdir;
-pub mod syscall;
-pub mod vfork;
+mod chdir;
+mod clone;
+mod clone3;
+mod close;
+mod creat;
+mod dirfd;
+mod errno;
+mod execve;
+mod execveat;
+mod fchdir;
+mod fd;
+mod fork;
+mod generic;
+mod mkdir;
+mod mkdirat;
+mod mode;
+mod open;
+mod openat;
+mod parse;
+mod rename;
+mod renameat;
+mod renameat2;
+mod result;
+mod rmdir;
+mod syscall;
+mod vfork;
 
 pub use chdir::Chdir;
 pub use clone::{Clone, CloneFlags};

@@ -3,8 +3,12 @@
 // file 'LICENSE', which is part of this source code package.
 
 //! Wrapping of [`std::process::Command`] values under `strace`.
+//!
+//! [`under_strace`] and [`stream`] are the usual entry points;
+//! [`under_strace_with`] is a lower-level helper for callers that need to
+//! inject extra `strace` arguments.
 
-use crate::line::Line;
+use crate::Event;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Lines};
@@ -32,7 +36,7 @@ pub(crate) const TRACE_FD: libc::c_int = 3;
 /// --follow-forks <program> <args...>`.  The working directory and environment
 /// of `cmd` are copied over to the wrapped command.
 ///
-/// Note that [`crate::line::Line`] only parses lines that carry a pid.
+/// Note that [`crate::Event`] only parses lines that carry a pid.
 /// `strace` prints a pid on every line, including those of the top-level
 /// process, only when the trace is redirected with `-o`; use
 /// [`under_strace_with`] to add it.
@@ -43,6 +47,9 @@ pub fn under_strace(cmd: Command) -> Command {
 
 /// Like [`under_strace`], but inserts `extra` `strace` arguments between the
 /// base flags and the traced program.
+///
+/// This is a lower-level helper: prefer [`under_strace`] unless you need the
+/// extra `strace` arguments.
 #[must_use]
 pub fn under_strace_with<I, S>(cmd: Command, extra: I) -> Command
 where
@@ -67,7 +74,7 @@ where
     wrapped
 }
 
-/// An iterator of [`Line`]s read from a command running under `strace`.
+/// An iterator of [`Event`]s read from a command running under `strace`.
 ///
 /// The trace is read from a dedicated pipe (see [`TRACE_FD`]), keeping the
 /// standard output and standard error of the traced process untouched. Lines
@@ -75,13 +82,13 @@ where
 /// skipped, so that the iterator only yields the parsed trace: fragments such
 /// as `<unfinished ...>`, `<... resumed>` and the `+++ exited ... +++`
 /// messages. Because the trace is redirected with `-o` and `--follow-forks`,
-/// every line carries a bare pid prefix (as parsed by [`Line`]).
-pub struct LineIter {
+/// every line carries a bare pid prefix (as parsed by [`Event`]).
+pub struct EventIter {
     child: Child,
     lines: Lines<BufReader<File>>,
 }
 
-impl LineIter {
+impl EventIter {
     /// Waits for the traced process to exit, reaping it.
     ///
     /// Call this after the iterator ends, or when discarding it, so that the
@@ -91,14 +98,14 @@ impl LineIter {
     }
 }
 
-impl Iterator for LineIter {
-    type Item = Line;
+impl Iterator for EventIter {
+    type Item = Event;
 
-    fn next(&mut self) -> Option<Line> {
+    fn next(&mut self) -> Option<Event> {
         loop {
             match self.lines.next() {
                 Some(Ok(text)) => {
-                    if let Ok(line) = text.parse::<Line>() {
+                    if let Ok(line) = text.parse::<Event>() {
                         return Some(line);
                     }
                 }
@@ -108,20 +115,20 @@ impl Iterator for LineIter {
     }
 }
 
-/// Spawns `cmd` under `strace` and returns an iterator of the traced [`Line`]s.
+/// Spawns `cmd` under `strace` and returns an iterator of the traced [`Event`]s.
 ///
 /// The command is wrapped with [`under_strace`], with an added `-o /dev/fd/3`
 /// that makes `strace` write its trace to a dedicated pipe instead of stderr.
-/// The trace is parsed into [`Line`]s, while the standard input, output and
+/// The trace is parsed into [`Event`]s, while the standard input, output and
 /// error of `cmd` are inherited, so the traced process sees and prints its own
-/// streams as usual. See [`LineIter`] for how non-syscall lines of output are
+/// streams as usual. See [`EventIter`] for how non-syscall lines of output are
 /// handled.
 ///
 /// # Errors
 ///
 /// Returns an error if the trace pipe cannot be created or `strace` cannot be
 /// spawned.
-pub fn stream(cmd: Command) -> ::std::io::Result<LineIter> {
+pub fn stream(cmd: Command) -> ::std::io::Result<EventIter> {
     let mut fds = [0 as libc::c_int; 2];
     if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
         return Err(::std::io::Error::last_os_error());
@@ -169,7 +176,7 @@ pub fn stream(cmd: Command) -> ::std::io::Result<LineIter> {
     unsafe {
         libc::close(writer_fd);
     }
-    Ok(LineIter {
+    Ok(EventIter {
         child,
         lines: BufReader::new(reader_file).lines(),
     })
@@ -273,7 +280,7 @@ mod tests {
         let mut cmd = Command::new("sh");
         cmd.args(["-c", "sleep 0.02 & wait"]);
         let mut lines = stream(cmd).expect("spawn strace");
-        let collected: Vec<Line> = lines.by_ref().collect();
+        let collected: Vec<Event> = lines.by_ref().collect();
         lines.wait().expect("wait for strace");
         assert!(!collected.is_empty());
         assert!(collected.iter().map(|line| line.pid).all(|pid| pid > 0));

@@ -3,16 +3,16 @@
 // file 'LICENSE', which is part of this source code package.
 
 //! Functional tests: run real commands under `strace` and parse the resulting
-//! trace with [`restrace::line::Line`].
+//! trace with [`restrace::Event`].
 //!
 //! Traces are read through [`restrace::tokio::stream`], the same path used by
 //! the `restrace run` command: `strace --follow-forks -o /dev/fd/3` writes
-//! every line with a bare pid prefix, which [`restrace::line::Line`] parses
+//! every line with a bare pid prefix, which [`restrace::Event`] parses
 //! into a mandatory pid.
 
 use ::tokio::process::Command as TokioCommand;
 use ::tokio_stream::StreamExt;
-use restrace::line::Line;
+use restrace::Event;
 use std::process::Command;
 
 /// Returns whether `strace` is available in this environment.
@@ -41,11 +41,11 @@ fn strace_can_trace_forks() -> bool {
     }
 }
 
-/// Runs `cmd` under `strace` and returns the parsed [`Line`]s of its trace.
+/// Runs `cmd` under `strace` and returns the parsed [`Event`]s of its trace.
 ///
 /// The trace is read through [`restrace::tokio::stream`], so every yielded
 /// line carries a pid.
-async fn trace(cmd: Command) -> Vec<Line> {
+async fn trace(cmd: Command) -> Vec<Event> {
     let mut lines = restrace::tokio::stream(TokioCommand::from(cmd)).expect("spawn strace");
     let mut collected = Vec::new();
     while let Some(line) = lines.next().await {
@@ -113,7 +113,7 @@ async fn parsed_lines_round_trip() {
 
     assert!(!lines.is_empty(), "expected some parsed syscalls");
     for line in lines {
-        let reparsed: Line = line.to_string().parse().expect("reparse displayed line");
+        let reparsed: Event = line.to_string().parse().expect("reparse displayed line");
         assert_eq!(line, reparsed);
     }
 }

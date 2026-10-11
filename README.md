@@ -10,14 +10,14 @@ the emitted system calls into Rust values.
 
 It is easier to explain the crate in terms of the types it provides:
 
-- [`line::Line`]: a single, complete line of `strace` output, carrying the
+- [`Event`]: a single, complete line of `strace` output, carrying the
   pid, the timestamp and a [`syscalls::Syscall`].
 - [`syscalls`]: typed records for the supported system calls behind the
   [`syscalls::Syscall`] enum, plus a [`syscalls::Generic`] fallback.
 - [`stdprocess`]: run a [`std::process::Command`] under `strace` and get a
-  blocking iterator of [`line::Line`]s with [`stdprocess::stream`].
+  blocking iterator of [`Event`]s with [`stdprocess::stream`].
 - [`tokio`]: the same for a `tokio::process::Command`, as an async stream
-  of [`line::Line`]s; only compiled with the `tokio` feature, which is
+  of [`Event`]s; only compiled with the `tokio` feature, which is
   enabled by default.
 
 `strace` must be installed in the environment where the commands run; this
@@ -25,15 +25,15 @@ crate only spawns it and parses its output.
 
 ## Parsing trace lines
 
-A [`line::Line`] parses the `strace` output produced with
+An [`Event`] parses the `strace` output produced with
 `--absolute-timestamps=format:unix,precision:us`, `--follow-forks` and a
 trace redirected with `-o`, which makes `strace` prefix every line with the
 pid of the process that made the call:
 
 ```rust
-use restrace::line::Line;
+use restrace::Event;
 
-let line: Line = "251751 1700000000.000000 execve(\"/bin/echo\", \
+let line: Event = "251751 1700000000.000000 execve(\"/bin/echo\", \
                   [\"echo\"], []) = 0"
     .parse()
     .unwrap();
@@ -47,7 +47,7 @@ the raw arguments and return value.
 ## Running a command under `strace`
 
 [`stdprocess::stream`] wraps a [`std::process::Command`] under `strace` and
-returns a blocking [`stdprocess::LineIter`] of parsed lines. The trace is
+returns a blocking [`stdprocess::EventIter`] of parsed lines. The trace is
 read from a dedicated pipe, so the standard streams of the traced process
 are left untouched:
 
@@ -66,8 +66,8 @@ lines.wait().unwrap();
 ## Tokio
 
 With the `tokio` feature (enabled by default), [`tokio::stream`] does the
-same for a `tokio::process::Command`, returning a [`tokio::LineStream`] of
-[`line::Line`]s:
+same for a `tokio::process::Command`, returning a [`tokio::EventStream`] of
+[`Event`]s:
 
 ```rust
 #[tokio::main(flavor = "current_thread")]
@@ -86,14 +86,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-[`line::Line`]: https://docs.rs/restrace/latest/restrace/line/struct.Line.html
+[`Event`]: https://docs.rs/restrace/latest/restrace/struct.Event.html
 [`syscalls`]: https://docs.rs/restrace/latest/restrace/syscalls/index.html
-[`syscalls::Syscall`]: https://docs.rs/restrace/latest/restrace/syscalls/syscall/enum.Syscall.html
-[`syscalls::Generic`]: https://docs.rs/restrace/latest/restrace/syscalls/generic/struct.Generic.html
+[`syscalls::Syscall`]: https://docs.rs/restrace/latest/restrace/syscalls/enum.Syscall.html
+[`syscalls::Generic`]: https://docs.rs/restrace/latest/restrace/syscalls/struct.Generic.html
 [`stdprocess`]: https://docs.rs/restrace/latest/restrace/stdprocess/index.html
 [`stdprocess::stream`]: https://docs.rs/restrace/latest/restrace/stdprocess/fn.stream.html
-[`stdprocess::LineIter`]: https://docs.rs/restrace/latest/restrace/stdprocess/struct.LineIter.html
+[`stdprocess::EventIter`]: https://docs.rs/restrace/latest/restrace/stdprocess/struct.EventIter.html
 [`std::process::Command`]: https://doc.rust-lang.org/std/process/struct.Command.html
 [`tokio`]: https://docs.rs/restrace/latest/restrace/tokio/index.html
 [`tokio::stream`]: https://docs.rs/restrace/latest/restrace/tokio/fn.stream.html
-[`tokio::LineStream`]: https://docs.rs/restrace/latest/restrace/tokio/struct.LineStream.html
+[`tokio::EventStream`]: https://docs.rs/restrace/latest/restrace/tokio/struct.EventStream.html

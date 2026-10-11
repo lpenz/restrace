@@ -12,14 +12,14 @@
 //! the emitted system calls into Rust values.
 //!
 //! It is easier to explain the crate in terms of the types it provides:
-//! - [`line::Line`]: a single, complete line of `strace` output, carrying the
+//! - [`Event`]: a single, complete line of `strace` output, carrying the
 //!   pid, the timestamp and a [`syscalls::Syscall`].
 //! - [`syscalls`]: typed records for the supported system calls behind the
 //!   [`syscalls::Syscall`] enum, plus a [`syscalls::Generic`] fallback.
 //! - [`stdprocess`]: run a [`std::process::Command`] under `strace` and get a
-//!   blocking iterator of [`line::Line`]s with [`stdprocess::stream`].
+//!   blocking iterator of [`Event`]s with [`stdprocess::stream`].
 //! - [`tokio`]: the same for a `tokio::process::Command`, as an async stream
-//!   of [`line::Line`]s; only compiled with the `tokio` feature, which is
+//!   of [`Event`]s; only compiled with the `tokio` feature, which is
 //!   enabled by default.
 //!
 //! `strace` must be installed in the environment where the commands run; this
@@ -27,15 +27,15 @@
 //!
 //! # Parsing trace lines
 //!
-//! A [`line::Line`] parses the `strace` output produced with
+//! An [`Event`] parses the `strace` output produced with
 //! `--absolute-timestamps=format:unix,precision:us`, `--follow-forks` and a
 //! trace redirected with `-o`, which makes `strace` prefix every line with the
 //! pid of the process that made the call:
 //!
 //! ```rust
-//! use restrace::line::Line;
+//! use restrace::Event;
 //!
-//! let line: Line = "251751 1700000000.000000 execve(\"/bin/echo\", [\"echo\"], []) = 0"
+//! let line: Event = "251751 1700000000.000000 execve(\"/bin/echo\", [\"echo\"], []) = 0"
 //!     .parse()
 //!     .unwrap();
 //! assert_eq!(line.pid, 251751);
@@ -48,7 +48,7 @@
 //! # Running a command under `strace`
 //!
 //! [`stdprocess::stream`] wraps a [`std::process::Command`] under `strace` and
-//! returns a blocking [`stdprocess::LineIter`] of parsed lines. The trace is
+//! returns a blocking [`stdprocess::EventIter`] of parsed lines. The trace is
 //! read from a dedicated pipe, so the standard streams of the traced process
 //! are left untouched:
 //!
@@ -67,8 +67,8 @@
 //! # Tokio
 //!
 //! With the `tokio` feature (enabled by default), [`tokio::stream`] does the
-//! same for a `tokio::process::Command`, returning a [`tokio::LineStream`] of
-//! [`line::Line`]s:
+//! same for a `tokio::process::Command`, returning a [`tokio::EventStream`] of
+//! [`Event`]s:
 //!
 //! ```rust,no_run
 //! # #[tokio::main(flavor = "current_thread")]
@@ -86,10 +86,13 @@
 //! # Ok(()) }
 //! ```
 
-pub mod line;
+mod event;
 pub mod stdprocess;
 pub mod syscalls;
 
 /// Tokio integration, only compiled with the `tokio` feature.
 #[cfg(feature = "tokio")]
 pub mod tokio;
+
+pub use event::Event;
+pub use syscalls::{ParseError, Syscall};

@@ -5,8 +5,14 @@
 //! Wrapping of `tokio::process::Command` values under `strace`.
 //!
 //! This module is only compiled when the `tokio` feature is enabled.
+//!
+//! The module name mirrors the `tokio` crate and the `tokio` feature on
+//! purpose: it is the async counterpart of [`crate::stdprocess`] and is
+//! always used as `restrace::tokio`, so it does not shadow the crate for
+//! callers. Inside the crate the `tokio` crate itself is referred to through
+//! the `::tokio` path.
 
-use crate::line::Line;
+use crate::Event;
 use crate::stdprocess::TRACE_FD;
 use ::tokio::fs::File as TokioFile;
 use ::tokio::io::{AsyncBufReadExt, BufReader, Lines};
@@ -25,7 +31,7 @@ use std::task::{Context, Poll};
 /// --follow-forks <program> <args...>`.  The working directory and environment
 /// of `cmd` are copied over to the wrapped command.
 ///
-/// Note that [`crate::line::Line`] only parses lines that carry a pid.
+/// Note that [`crate::Event`] only parses lines that carry a pid.
 /// `strace` prints a pid on every line, including those of the top-level
 /// process, only when the trace is redirected with `-o`; see [`stream`] for a
 /// ready-made command that does so.
@@ -34,7 +40,7 @@ pub fn under_strace(cmd: Command) -> Command {
     crate::stdprocess::under_strace(cmd.into_std()).into()
 }
 
-/// A stream of [`Line`]s read from a command running under `strace`.
+/// A stream of [`Event`]s read from a command running under `strace`.
 ///
 /// The trace is read from a dedicated pipe (see [`TRACE_FD`]), keeping the
 /// standard output and standard error of the traced process untouched. Lines
@@ -42,13 +48,13 @@ pub fn under_strace(cmd: Command) -> Command {
 /// skipped, so that the stream only yields the parsed trace: fragments such
 /// as `<unfinished ...>`, `<... resumed>` and the `+++ exited ... +++`
 /// messages. Because the trace is redirected with `-o` and `--follow-forks`,
-/// every line carries a bare pid prefix (as parsed by [`Line`]).
-pub struct LineStream {
+/// every line carries a bare pid prefix (as parsed by [`Event`]).
+pub struct EventStream {
     child: Child,
     lines: Lines<BufReader<TokioFile>>,
 }
 
-impl LineStream {
+impl EventStream {
     /// Waits for the traced process to exit, reaping it.
     ///
     /// Call this after the stream ends, or when discarding it, so that the
@@ -58,8 +64,8 @@ impl LineStream {
     }
 }
 
-impl Stream for LineStream {
-    type Item = Line;
+impl Stream for EventStream {
+    type Item = Event;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -67,7 +73,7 @@ impl Stream for LineStream {
             match Pin::new(&mut this.lines).poll_next_line(cx) {
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(Ok(Some(text))) => {
-                    if let Ok(line) = text.parse::<Line>() {
+                    if let Ok(line) = text.parse::<Event>() {
                         return Poll::Ready(Some(line));
                     }
                 }
@@ -77,20 +83,20 @@ impl Stream for LineStream {
     }
 }
 
-/// Spawns `cmd` under `strace` and returns a stream of the traced [`Line`]s.
+/// Spawns `cmd` under `strace` and returns a stream of the traced [`Event`]s.
 ///
 /// The command is wrapped with [`under_strace`], with an added `-o /dev/fd/3`
 /// that makes `strace` write its trace to a dedicated pipe instead of
-/// stderr. The trace is parsed into [`Line`]s, while the standard input,
+/// stderr. The trace is parsed into [`Event`]s, while the standard input,
 /// output and error of `cmd` are inherited, so the traced process sees and
-/// prints its own streams as usual. See [`LineStream`] for how non-syscall
+/// prints its own streams as usual. See [`EventStream`] for how non-syscall
 /// lines of output are handled.
 ///
 /// # Errors
 ///
 /// Returns an error if the trace pipe cannot be created or `strace` cannot be
 /// spawned.
-pub fn stream(cmd: Command) -> ::std::io::Result<LineStream> {
+pub fn stream(cmd: Command) -> ::std::io::Result<EventStream> {
     let mut fds = [0 as libc::c_int; 2];
     if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
         return Err(::std::io::Error::last_os_error());
@@ -140,7 +146,7 @@ pub fn stream(cmd: Command) -> ::std::io::Result<LineStream> {
         libc::close(writer_fd);
     }
     let trace = TokioFile::from_std(reader_file);
-    Ok(LineStream {
+    Ok(EventStream {
         child,
         lines: BufReader::new(trace).lines(),
     })
