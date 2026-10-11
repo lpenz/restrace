@@ -43,9 +43,8 @@ pub fn under_strace(cmd: Command) -> Command {
 /// of strace output that do not form a complete, single system call are
 /// skipped, so that the stream only yields the parsed trace: fragments such
 /// as `<unfinished ...>`, `<... resumed>` and the `+++ exited ... +++`
-/// messages. Because the trace is redirected with `-o`, every line carries a
-/// pid prefix (as parsed by [`Line`]), with `None` remaining possible for
-/// lines of the top-level process.
+/// messages. Because the trace is redirected with `-o` and `--follow-forks`,
+/// every line carries a bare pid prefix (as parsed by [`Line`]).
 pub struct LineStream {
     child: Child,
     lines: Lines<BufReader<TokioFile>>,
@@ -217,11 +216,6 @@ mod tests {
         }
         lines.wait().await.expect("wait for strace");
         assert!(!collected.is_empty());
-        assert!(
-            collected
-                .iter()
-                .filter_map(|line| line.pid)
-                .all(|pid| pid > 0)
-        );
+        assert!(collected.iter().map(|line| line.pid).all(|pid| pid > 0));
     }
 }

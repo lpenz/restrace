@@ -2,21 +2,21 @@
 // This file is subject to the terms and conditions defined in
 // file 'LICENSE', which is part of this source code package.
 
-//! A finished line of strace output, as produced with `--follow-forks` and
-//! `--absolute-timestamps=format:unix,precision:us`:
-//!
-//! ```text
-//! [pid  12345] 1699999999.123456 openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
-//! ```
-//!
-//! When the trace is redirected with `-o FILE` combined with `--follow-forks`,
-//! strace prefixes every line with the bare pid instead:
+//! A finished line of strace output, as produced with
+//! `--follow-forks` and `--absolute-timestamps=format:unix,precision:us`.
+//! Every line carries the pid of the traced process:
 //!
 //! ```text
 //! 251751 1699999999.123456 openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
 //! ```
 //!
-//! Both forms are accepted when parsing.
+//! strace only prints the bare `<pid> ` prefix when it is tracing a command
+//! with `--follow-forks` and redirecting the trace with `-o`, as done by
+//! [`crate::tokio::LineStream`]; without it, lines of the top-level process
+//! have no pid and are not parsed into [`Line`]s.
+//!
+//! The bracketed `[pid  251751]` form is also accepted when parsing, and is how
+//! [`fmt::Display`] renders lines.
 
 use crate::syscalls::{ParseError, Syscall};
 use std::fmt;
@@ -29,56 +29,38 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub struct Line {
     /// The ID of the traced process that performed the call.
     ///
-    /// Padded to five digits when displayed, as strace does. `None` for lines
-    /// of the top-level process, which `strace --follow-forks` prints without a
-    /// `[pid ...]` prefix.
-    pub pid: Option<u32>,
+    /// Padded to five digits when displayed, as strace does.
+    pub pid: u32,
     /// When the call was made, as a Unix time with microsecond precision.
     pub time: SystemTime,
     /// The system call and its return value.
     pub syscall: Syscall,
 }
 
-/// Parses the optional `[pid  12345]` prefix of a line, returning the PID (if
-/// present) and the rest of the line.
-fn parse_pid(input: &str) -> (Option<u32>, &str) {
-    let Some((head, rest)) = input.split_once(']') else {
-        return (None, input);
-    };
-    let Some(head) = head.strip_prefix('[') else {
-        return (None, input);
-    };
-    let Some(head) = head.strip_prefix("pid ") else {
-        return (None, input);
-    };
-    let Some(pid) = head.split_whitespace().next() else {
-        return (None, input);
-    };
-    let Ok(pid) = pid.parse::<u32>() else {
-        return (None, input);
-    };
-    (Some(pid), rest.trim_start())
-}
-
-/// Parses the bare `<pid> <timestamp> ` prefix that `strace -f -o FILE`
-/// prints, returning the PID (if present) and the rest of the line.
-///
-/// The PID and the timestamp are both numeric, but only the timestamp
-/// contains a dot, so a leading token without a dot is a PID.
-fn parse_bare_pid(pid: Option<u32>, input: &str) -> (Option<u32>, &str) {
-    if pid.is_some() {
-        return (pid, input);
+/// Parses the pid prefix of a line, in either of the two forms strace prints:
+/// the bracketed `[pid  12345]` and, with `-o FILE`, the bare `12345 `. Returns
+/// the PID and the rest of the line, or an error if there is no pid.
+fn parse_pid(input: &str) -> Result<(u32, &str), ParseError> {
+    let error = || ParseError::new("pid", input);
+    if let Some((head, rest)) = input.split_once(']')
+        && let Some(head) = head
+            .strip_prefix('[')
+            .and_then(|head| head.strip_prefix("pid "))
+    {
+        let pid = head.split_whitespace().next().ok_or_else(error)?;
+        let pid = pid.parse::<u32>().map_err(|_| error())?;
+        return Ok((pid, rest.trim_start()));
     }
+    // Bare form: `<pid> <secs>.<micros> ...`. The pid and the timestamp are
+    // both numeric, but only the timestamp contains a dot.
     let Some((head, rest)) = input.split_once(' ') else {
-        return (pid, input);
+        return Err(error());
     };
     if head.contains('.') || head.is_empty() {
-        return (pid, input);
+        return Err(error());
     }
-    let Some(pid) = head.parse::<u32>().ok() else {
-        return (pid, input);
-    };
-    (Some(pid), rest.trim_start())
+    let pid = head.parse::<u32>().map_err(|_| error())?;
+    Ok((pid, rest.trim_start()))
 }
 
 /// Parses the `<secs>.<micros> ` timestamp of a line, returning the time and
@@ -101,16 +83,14 @@ fn parse_time(input: &str) -> Result<(SystemTime, &str), ParseError> {
 impl Line {
     /// Builds a line record from its PID, time and system call.
     #[must_use]
-    pub fn from_parts(pid: Option<u32>, time: SystemTime, syscall: Syscall) -> Self {
+    pub fn from_parts(pid: u32, time: SystemTime, syscall: Syscall) -> Self {
         Self { pid, time, syscall }
     }
 }
 
 impl fmt::Display for Line {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(pid) = self.pid {
-            write!(f, "[pid {pid:5}] ")?;
-        }
+        write!(f, "[pid {:5}] ", self.pid)?;
         let since_epoch = self
             .time
             .duration_since(UNIX_EPOCH)
@@ -125,15 +105,15 @@ impl fmt::Display for Line {
     }
 }
 
-/// Parses a line as [`Display`](fmt::Display) writes it, as strace prints it
-/// with `--follow-forks` and `--absolute-timestamps=format:unix,precision:us`.
+/// Parses a line as [`fmt::Display`] writes it, as strace prints it
+/// with `--follow-forks`, `--absolute-timestamps=format:unix,precision:us`
+/// and a trace redirected with `-o`.
 impl FromStr for Line {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, ParseError> {
         let s = s.trim();
-        let (pid, ret) = parse_pid(s);
-        let (pid, ret) = parse_bare_pid(pid, ret);
+        let (pid, ret) = parse_pid(s)?;
         let (time, ret) = parse_time(ret)?;
         let syscall = Syscall::from_str(ret)?;
         Ok(Self { pid, time, syscall })
@@ -151,7 +131,7 @@ mod tests {
     #[test]
     fn display() {
         let line = Line::from_parts(
-            Some(12345),
+            12345,
             epoch(1_699_999_999, 123_456),
             Syscall::from_str("open(\"/tmp\", O_RDONLY) = 3").unwrap(),
         );
@@ -164,7 +144,7 @@ mod tests {
     #[test]
     fn display_small_pid() {
         let line = Line::from_parts(
-            Some(42),
+            42,
             epoch(1_700_000_000, 1),
             Syscall::from_str("close(0) = 0").unwrap(),
         );
@@ -175,40 +155,18 @@ mod tests {
     }
 
     #[test]
-    fn display_no_pid() {
-        let line = Line::from_parts(
-            None,
-            epoch(1_700_000_000, 123_456),
-            Syscall::from_str("execve(\"/bin/echo\", [\"echo\"], []) = 0").unwrap(),
-        );
-        assert_eq!(
-            line.to_string(),
-            "1700000000.123456 execve(\"/bin/echo\", [\"echo\"], []) = 0"
-        );
-    }
-
-    #[test]
     fn parse() {
         let line =
             Line::from_str("[pid  1234] 1699999999.123456 open(\"/tmp\", O_RDONLY) = 3").unwrap();
-        assert_eq!(line.pid, Some(1234));
+        assert_eq!(line.pid, 1234);
         assert_eq!(line.time, epoch(1_699_999_999, 123_456));
         assert!(matches!(line.syscall, Syscall::Open(_)));
     }
 
     #[test]
-    fn parse_no_pid() {
-        let line =
-            Line::from_str("1700000000.000000 execve(\"/bin/echo\", [\"echo\"], []) = 0").unwrap();
-        assert_eq!(line.pid, None);
-        assert_eq!(line.time, epoch(1_700_000_000, 0));
-        assert!(matches!(line.syscall, Syscall::Execve(_)));
-    }
-
-    #[test]
     fn parse_generic() {
         let line = Line::from_str("[pid 1] 1700000000.000000 spill(0x1, 0x2) = 0").unwrap();
-        assert_eq!(line.pid, Some(1));
+        assert_eq!(line.pid, 1);
         assert!(matches!(line.syscall, Syscall::Generic(_)));
     }
 
@@ -217,7 +175,7 @@ mod tests {
         let line =
             Line::from_str("251751 1700000000.000000 execve(\"/bin/echo\", [\"echo\"], []) = 0")
                 .unwrap();
-        assert_eq!(line.pid, Some(251751));
+        assert_eq!(line.pid, 251751);
         assert_eq!(line.time, epoch(1_700_000_000, 0));
         assert!(matches!(line.syscall, Syscall::Execve(_)));
     }
@@ -225,7 +183,7 @@ mod tests {
     #[test]
     fn parse_bare_pid_padded() {
         let line = Line::from_str("123  1700000000.000000 close(0) = 0").unwrap();
-        assert_eq!(line.pid, Some(123));
+        assert_eq!(line.pid, 123);
         assert!(matches!(line.syscall, Syscall::Close(_)));
     }
 
@@ -233,6 +191,7 @@ mod tests {
     fn parse_invalid() {
         assert!(Line::from_str("").is_err());
         assert!(Line::from_str("open(\"/tmp\", O_RDONLY) = 3").is_err());
+        assert!(Line::from_str("1700000000.000000 execve(\"/bin/echo\", []) = 0").is_err());
         assert!(
             Line::from_str("[pid abc] 1700000000.000000 open(\"/tmp\", O_RDONLY) = 3").is_err()
         );
