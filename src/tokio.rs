@@ -7,6 +7,7 @@
 //! This module is only compiled when the `tokio` feature is enabled.
 
 use crate::line::Line;
+use crate::stdprocess::TRACE_FD;
 use ::tokio::fs::File as TokioFile;
 use ::tokio::io::{AsyncBufReadExt, BufReader, Lines};
 use ::tokio::process::{Child, Command};
@@ -16,13 +17,6 @@ use std::os::fd::FromRawFd;
 use std::pin::Pin;
 use std::process::ExitStatus;
 use std::task::{Context, Poll};
-
-/// File descriptor strace writes its trace output to.
-///
-/// The descriptor is the write end of an anonymous pipe we create, passed to
-/// `strace` as `-o /dev/fd/3`, so that the trace does not interfere with the
-/// standard streams of the traced process.
-const TRACE_FD: libc::c_int = 3;
 
 /// Turns `cmd` into a command that runs the same program with the same
 /// arguments, but under `strace`.

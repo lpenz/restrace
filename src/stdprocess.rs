@@ -4,14 +4,26 @@
 
 //! Wrapping of [`std::process::Command`] values under `strace`.
 
+use crate::line::Line;
 use std::ffi::OsStr;
-use std::process::Command;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Lines};
+use std::os::fd::FromRawFd;
+use std::os::unix::process::CommandExt;
+use std::process::{Child, Command, ExitStatus};
 
 /// Flags passed to `strace` before the traced program.
 const STRACE_FLAGS: [&str; 2] = [
     "--absolute-timestamps=format:unix,precision:us",
     "--follow-forks",
 ];
+
+/// File descriptor strace writes its trace output to.
+///
+/// The descriptor is the write end of an anonymous pipe we create, passed to
+/// `strace` as `-o /dev/fd/3`, so that the trace does not interfere with the
+/// standard streams of the traced process.
+pub(crate) const TRACE_FD: libc::c_int = 3;
 
 /// Turns `cmd` into a command that runs the same program with the same
 /// arguments, but under `strace`.
@@ -53,6 +65,114 @@ where
         }
     }
     wrapped
+}
+
+/// An iterator of [`Line`]s read from a command running under `strace`.
+///
+/// The trace is read from a dedicated pipe (see [`TRACE_FD`]), keeping the
+/// standard output and standard error of the traced process untouched. Lines
+/// of strace output that do not form a complete, single system call are
+/// skipped, so that the iterator only yields the parsed trace: fragments such
+/// as `<unfinished ...>`, `<... resumed>` and the `+++ exited ... +++`
+/// messages. Because the trace is redirected with `-o` and `--follow-forks`,
+/// every line carries a bare pid prefix (as parsed by [`Line`]).
+pub struct LineIter {
+    child: Child,
+    lines: Lines<BufReader<File>>,
+}
+
+impl LineIter {
+    /// Waits for the traced process to exit, reaping it.
+    ///
+    /// Call this after the iterator ends, or when discarding it, so that the
+    /// `strace` process is not left as a zombie.
+    pub fn wait(&mut self) -> ::std::io::Result<ExitStatus> {
+        self.child.wait()
+    }
+}
+
+impl Iterator for LineIter {
+    type Item = Line;
+
+    fn next(&mut self) -> Option<Line> {
+        loop {
+            match self.lines.next() {
+                Some(Ok(text)) => {
+                    if let Ok(line) = text.parse::<Line>() {
+                        return Some(line);
+                    }
+                }
+                Some(Err(_)) | None => return None,
+            }
+        }
+    }
+}
+
+/// Spawns `cmd` under `strace` and returns an iterator of the traced [`Line`]s.
+///
+/// The command is wrapped with [`under_strace`], with an added `-o /dev/fd/3`
+/// that makes `strace` write its trace to a dedicated pipe instead of stderr.
+/// The trace is parsed into [`Line`]s, while the standard input, output and
+/// error of `cmd` are inherited, so the traced process sees and prints its own
+/// streams as usual. See [`LineIter`] for how non-syscall lines of output are
+/// handled.
+///
+/// # Errors
+///
+/// Returns an error if the trace pipe cannot be created or `strace` cannot be
+/// spawned.
+pub fn stream(cmd: Command) -> ::std::io::Result<LineIter> {
+    let mut fds = [0 as libc::c_int; 2];
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+        return Err(::std::io::Error::last_os_error());
+    }
+    let reader_fd = fds[0];
+    let writer_fd = fds[1];
+    // Keep both ends private to this process: the only descriptor that
+    // survives the exec is the dup2'd TRACE_FD copy.
+    for fd in [reader_fd, writer_fd] {
+        unsafe {
+            let flags = libc::fcntl(fd, libc::F_GETFD);
+            if flags >= 0 {
+                libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+            }
+        }
+    }
+    let trace_path = format!("/dev/fd/{TRACE_FD}");
+    let mut wrapped = under_strace_with(cmd, ["-o", trace_path.as_str()]);
+    unsafe {
+        wrapped.pre_exec(move || {
+            // Give strace its own descriptor for the trace output. If it was
+            // already TRACE_FD, dup2 is a no-op but keeps FD_CLOEXEC, so
+            // clear it to make sure the descriptor survives the exec.
+            if libc::dup2(writer_fd, TRACE_FD) < 0 {
+                return Err(::std::io::Error::last_os_error());
+            }
+            if libc::fcntl(TRACE_FD, libc::F_SETFD, 0) < 0 {
+                return Err(::std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let reader_file = unsafe { File::from_raw_fd(reader_fd) };
+    let child = match wrapped.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            unsafe {
+                libc::close(writer_fd);
+            }
+            return Err(e);
+        }
+    };
+    // Close our copy of the writer so that the reader reaches EOF when
+    // strace exits.
+    unsafe {
+        libc::close(writer_fd);
+    }
+    Ok(LineIter {
+        child,
+        lines: BufReader::new(reader_file).lines(),
+    })
 }
 
 #[cfg(test)]
@@ -126,5 +246,36 @@ mod tests {
         let wrapped = under_strace(cmd);
         let envs = wrapped.get_envs().collect::<Vec<_>>();
         assert_eq!(envs, vec![(OsStr::new("TERM"), None)]);
+    }
+
+    /// Returns whether `strace` can trace forks in this environment.
+    fn strace_can_trace_forks() -> bool {
+        let out = Command::new("strace")
+            .args([
+                "--absolute-timestamps=format:unix,precision:us",
+                "--follow-forks",
+                "sh",
+                "-c",
+                "sleep 0.02 & wait",
+            ])
+            .output();
+        match out {
+            Ok(out) => String::from_utf8_lossy(&out.stderr).contains("[pid "),
+            Err(_) => false,
+        }
+    }
+
+    #[test]
+    fn stream_yields_lines() {
+        if !strace_can_trace_forks() {
+            return;
+        }
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "sleep 0.02 & wait"]);
+        let mut lines = stream(cmd).expect("spawn strace");
+        let collected: Vec<Line> = lines.by_ref().collect();
+        lines.wait().expect("wait for strace");
+        assert!(!collected.is_empty());
+        assert!(collected.iter().map(|line| line.pid).all(|pid| pid > 0));
     }
 }
