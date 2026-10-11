@@ -28,9 +28,13 @@ const TRACE_FD: libc::c_int = 3;
 /// arguments, but under `strace`.
 ///
 /// The returned command executes `strace --absolute-timestamps=format:unix,precision:us
-/// --follow-forks <program> <args...>`, so that the traced calls can be read
-/// with [`crate::line::Line`].  The working directory and environment of
-/// `cmd` are copied over to the wrapped command.
+/// --follow-forks <program> <args...>`.  The working directory and environment
+/// of `cmd` are copied over to the wrapped command.
+///
+/// Note that [`crate::line::Line`] only parses lines that carry a pid.
+/// `strace` prints a pid on every line, including those of the top-level
+/// process, only when the trace is redirected with `-o`; see [`stream`] for a
+/// ready-made command that does so.
 #[must_use]
 pub fn under_strace(cmd: Command) -> Command {
     crate::stdprocess::under_strace(cmd.into_std()).into()

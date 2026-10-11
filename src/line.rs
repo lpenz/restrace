@@ -40,6 +40,10 @@ pub struct Line {
 /// Parses the pid prefix of a line, in either of the two forms strace prints:
 /// the bracketed `[pid  12345]` and, with `-o FILE`, the bare `12345 `. Returns
 /// the PID and the rest of the line, or an error if there is no pid.
+///
+/// We assume the trace was redirected with `-o`, so that `strace` prints a pid
+/// on every line, including those of the top-level process; lines without a
+/// pid are rejected.
 fn parse_pid(input: &str) -> Result<(u32, &str), ParseError> {
     let error = || ParseError::new("pid", input);
     if let Some((head, rest)) = input.split_once(']')
