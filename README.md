@@ -5,4 +5,15 @@
 [![dependency status](https://deps.rs/repo/github/lpenz/restrace/status.svg)](https://deps.rs/repo/github/lpenz/restrace)
 [![crates.io](https://img.shields.io/crates/v/restrace)](https://crates.io/crates/restrace)
 
-Template repository for rust command-line utilities
+restrace runs a command under [strace](https://strace.io) and emits the
+parsed system calls:
+
+```bash
+restrace run ls -l
+```
+
+The trace is printed to stderr, or written to a file with `--output`:
+
+```bash
+restrace run --output trace.log sleep 1
+```

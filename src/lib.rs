@@ -18,6 +18,9 @@ pub mod syscalls;
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
+#[cfg(feature = "tokio")]
+mod run;
+
 use clap::Parser;
 use std::error::Error;
 
@@ -30,6 +33,13 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let args = cli::Cli::parse();
-    eprintln!("{:?}", args);
-    Ok(())
+    match args.command {
+        #[cfg(feature = "tokio")]
+        cli::Command::Run(args) => {
+            run::run(args).await?;
+            Ok(())
+        }
+        #[cfg(not(feature = "tokio"))]
+        cli::Command::Run(_) => Err("restrace was built without the `tokio` feature".into()),
+    }
 }

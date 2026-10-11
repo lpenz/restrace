@@ -393,6 +393,7 @@ dependencies = [
  "clap2man",
  "clap_complete",
  "color-eyre",
+ "libc",
  "man",
  "tokio",
  "tokio-stream",

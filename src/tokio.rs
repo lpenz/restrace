@@ -7,12 +7,22 @@
 //! This module is only compiled when the `tokio` feature is enabled.
 
 use crate::line::Line;
+use ::tokio::fs::File as TokioFile;
 use ::tokio::io::{AsyncBufReadExt, BufReader, Lines};
-use ::tokio::process::{Child, ChildStderr, Command};
+use ::tokio::process::{Child, Command};
 use ::tokio_stream::Stream;
+use std::fs::File;
+use std::os::fd::FromRawFd;
 use std::pin::Pin;
-use std::process::{ExitStatus, Stdio};
+use std::process::ExitStatus;
 use std::task::{Context, Poll};
+
+/// File descriptor strace writes its trace output to.
+///
+/// The descriptor is the write end of an anonymous pipe we create, passed to
+/// `strace` as `-o /dev/fd/3`, so that the trace does not interfere with the
+/// standard streams of the traced process.
+const TRACE_FD: libc::c_int = 3;
 
 /// Turns `cmd` into a command that runs the same program with the same
 /// arguments, but under `strace`.
@@ -28,14 +38,17 @@ pub fn under_strace(cmd: Command) -> Command {
 
 /// A stream of [`Line`]s read from a command running under `strace`.
 ///
-/// Lines of strace output that do not form a complete, single system call are
-/// skipped, so that the stream only yields the parsed trace: fragments such as
-/// `<unfinished ...>`, `<... resumed>` and the `+++ exited ... +++` messages.
-/// Lines of the top-level process carry no `[pid ...]` prefix and are yielded
-/// with a `None` pid.
+/// The trace is read from a dedicated pipe (see [`TRACE_FD`]), keeping the
+/// standard output and standard error of the traced process untouched. Lines
+/// of strace output that do not form a complete, single system call are
+/// skipped, so that the stream only yields the parsed trace: fragments such
+/// as `<unfinished ...>`, `<... resumed>` and the `+++ exited ... +++`
+/// messages. Because the trace is redirected with `-o`, every line carries a
+/// pid prefix (as parsed by [`Line`]), with `None` remaining possible for
+/// lines of the top-level process.
 pub struct LineStream {
     child: Child,
-    lines: Lines<BufReader<ChildStderr>>,
+    lines: Lines<BufReader<TokioFile>>,
 }
 
 impl LineStream {
@@ -69,22 +82,70 @@ impl Stream for LineStream {
 
 /// Spawns `cmd` under `strace` and returns a stream of the traced [`Line`]s.
 ///
-/// The command is wrapped with [`under_strace`]; its standard error is
-/// captured and parsed into [`Line`]s, while its standard input and output are
-/// inherited. See [`LineStream`] for how non-syscall lines of output are
-/// handled.
+/// The command is wrapped with [`under_strace`], with an added `-o /dev/fd/3`
+/// that makes `strace` write its trace to a dedicated pipe instead of
+/// stderr. The trace is parsed into [`Line`]s, while the standard input,
+/// output and error of `cmd` are inherited, so the traced process sees and
+/// prints its own streams as usual. See [`LineStream`] for how non-syscall
+/// lines of output are handled.
 ///
 /// # Errors
 ///
-/// Returns an error if `strace` cannot be spawned.
+/// Returns an error if the trace pipe cannot be created or `strace` cannot be
+/// spawned.
 pub fn stream(cmd: Command) -> ::std::io::Result<LineStream> {
-    let mut wrapped = under_strace(cmd);
-    wrapped.stderr(Stdio::piped());
-    let mut child = wrapped.spawn()?;
-    let stderr = child.stderr.take().expect("stderr was piped");
+    let mut fds = [0 as libc::c_int; 2];
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+        return Err(::std::io::Error::last_os_error());
+    }
+    let reader_fd = fds[0];
+    let writer_fd = fds[1];
+    // Keep both ends private to this process: the only descriptor that
+    // survives the exec is the dup2'd TRACE_FD copy.
+    for fd in [reader_fd, writer_fd] {
+        unsafe {
+            let flags = libc::fcntl(fd, libc::F_GETFD);
+            if flags >= 0 {
+                libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+            }
+        }
+    }
+    let trace_path = format!("/dev/fd/{TRACE_FD}");
+    let mut wrapped: Command =
+        crate::stdprocess::under_strace_with(cmd.into_std(), ["-o", trace_path.as_str()]).into();
+    unsafe {
+        wrapped.pre_exec(move || {
+            // Give strace its own descriptor for the trace output. If it was
+            // already TRACE_FD, dup2 is a no-op but keeps FD_CLOEXEC, so
+            // clear it to make sure the descriptor survives the exec.
+            if libc::dup2(writer_fd, TRACE_FD) < 0 {
+                return Err(::std::io::Error::last_os_error());
+            }
+            if libc::fcntl(TRACE_FD, libc::F_SETFD, 0) < 0 {
+                return Err(::std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let reader_file = unsafe { File::from_raw_fd(reader_fd) };
+    let child = match wrapped.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            unsafe {
+                libc::close(writer_fd);
+            }
+            return Err(e);
+        }
+    };
+    // Close our copy of the writer so that the reader reaches EOF when
+    // strace exits.
+    unsafe {
+        libc::close(writer_fd);
+    }
+    let trace = TokioFile::from_std(reader_file);
     Ok(LineStream {
         child,
-        lines: BufReader::new(stderr).lines(),
+        lines: BufReader::new(trace).lines(),
     })
 }
 

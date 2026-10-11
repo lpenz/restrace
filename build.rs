@@ -26,6 +26,17 @@ fn generate_man_page<P: AsRef<path::Path>>(
     let manpage: Manual = clap2man::Manual::try_from(cmd)
         .map_err(|e| eyre!(e))?
         .into();
+    let manpage = manpage
+        .example(
+            Example::new()
+                .text("Trace a command, printing the calls to stderr")
+                .command("restrace run ls -l"),
+        )
+        .example(
+            Example::new()
+                .text("Write the trace of a command to a file")
+                .command("restrace run --output trace.log sleep 1"),
+        );
     std::fs::write(man_path, manpage.render())?;
     Ok(())
 }

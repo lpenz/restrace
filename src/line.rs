@@ -8,6 +8,15 @@
 //! ```text
 //! [pid  12345] 1699999999.123456 openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
 //! ```
+//!
+//! When the trace is redirected with `-o FILE` combined with `--follow-forks`,
+//! strace prefixes every line with the bare pid instead:
+//!
+//! ```text
+//! 251751 1699999999.123456 openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+//! ```
+//!
+//! Both forms are accepted when parsing.
 
 use crate::syscalls::{ParseError, Syscall};
 use std::fmt;
@@ -47,6 +56,27 @@ fn parse_pid(input: &str) -> (Option<u32>, &str) {
     };
     let Ok(pid) = pid.parse::<u32>() else {
         return (None, input);
+    };
+    (Some(pid), rest.trim_start())
+}
+
+/// Parses the bare `<pid> <timestamp> ` prefix that `strace -f -o FILE`
+/// prints, returning the PID (if present) and the rest of the line.
+///
+/// The PID and the timestamp are both numeric, but only the timestamp
+/// contains a dot, so a leading token without a dot is a PID.
+fn parse_bare_pid(pid: Option<u32>, input: &str) -> (Option<u32>, &str) {
+    if pid.is_some() {
+        return (pid, input);
+    }
+    let Some((head, rest)) = input.split_once(' ') else {
+        return (pid, input);
+    };
+    if head.contains('.') || head.is_empty() {
+        return (pid, input);
+    }
+    let Some(pid) = head.parse::<u32>().ok() else {
+        return (pid, input);
     };
     (Some(pid), rest.trim_start())
 }
@@ -103,6 +133,7 @@ impl FromStr for Line {
     fn from_str(s: &str) -> Result<Self, ParseError> {
         let s = s.trim();
         let (pid, ret) = parse_pid(s);
+        let (pid, ret) = parse_bare_pid(pid, ret);
         let (time, ret) = parse_time(ret)?;
         let syscall = Syscall::from_str(ret)?;
         Ok(Self { pid, time, syscall })
@@ -179,6 +210,23 @@ mod tests {
         let line = Line::from_str("[pid 1] 1700000000.000000 spill(0x1, 0x2) = 0").unwrap();
         assert_eq!(line.pid, Some(1));
         assert!(matches!(line.syscall, Syscall::Generic(_)));
+    }
+
+    #[test]
+    fn parse_bare_pid() {
+        let line =
+            Line::from_str("251751 1700000000.000000 execve(\"/bin/echo\", [\"echo\"], []) = 0")
+                .unwrap();
+        assert_eq!(line.pid, Some(251751));
+        assert_eq!(line.time, epoch(1_700_000_000, 0));
+        assert!(matches!(line.syscall, Syscall::Execve(_)));
+    }
+
+    #[test]
+    fn parse_bare_pid_padded() {
+        let line = Line::from_str("123  1700000000.000000 close(0) = 0").unwrap();
+        assert_eq!(line.pid, Some(123));
+        assert!(matches!(line.syscall, Syscall::Close(_)));
     }
 
     #[test]

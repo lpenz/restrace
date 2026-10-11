@@ -1,6 +1,6 @@
 [package]
 name = "restrace"
-description = "Template repository for rust command-line utilities"
+description = "Run a command under strace and emit the parsed system calls"
 version = "0.1.0"
 edition = "2024"
 authors = ["Leandro Lisboa Penz <lpenz@lpenz.org>"]
@@ -15,11 +15,13 @@ keywords = ["command-line"]
 [dependencies]
 clap = { version = "4.6.2", features = ["derive"] }
 color-eyre = "0.6.5"
-tokio = { version = "1.53.0", features = ["io-util", "macros", "process", "rt"] }
+libc = "0.2"
+tokio = { version = "1.53.0", features = ["fs", "io-std", "io-util", "macros", "process", "rt"] }
 tokio-stream = { version = "0.1.19", optional = true }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [features]
+default = ["tokio"]
 tokio = ["dep:tokio-stream"]
 
 [build-dependencies]
@@ -32,7 +34,8 @@ man = "0.3.0"
 [package.metadata.deb]
 section = "utils"
 extended-description = """\
-Template repository for rust command-line utilities
+restrace runs a command under strace and emits the parsed system calls,
+either to stderr or to a file.
 """
 assets = [
     ["target/release/restrace.1", "usr/share/man/man1/", "644"],

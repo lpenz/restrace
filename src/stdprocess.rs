@@ -4,7 +4,14 @@
 
 //! Wrapping of [`std::process::Command`] values under `strace`.
 
+use std::ffi::OsStr;
 use std::process::Command;
+
+/// Flags passed to `strace` before the traced program.
+const STRACE_FLAGS: [&str; 2] = [
+    "--absolute-timestamps=format:unix,precision:us",
+    "--follow-forks",
+];
 
 /// Turns `cmd` into a command that runs the same program with the same
 /// arguments, but under `strace`.
@@ -15,11 +22,20 @@ use std::process::Command;
 /// `cmd` are copied over to the wrapped command.
 #[must_use]
 pub fn under_strace(cmd: Command) -> Command {
+    under_strace_with(cmd, [] as [&OsStr; 0])
+}
+
+/// Like [`under_strace`], but inserts `extra` `strace` arguments between the
+/// base flags and the traced program.
+#[must_use]
+pub fn under_strace_with<I, S>(cmd: Command, extra: I) -> Command
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
     let mut wrapped = Command::new("strace");
-    wrapped.args([
-        "--absolute-timestamps=format:unix,precision:us",
-        "--follow-forks",
-    ]);
+    wrapped.args(STRACE_FLAGS);
+    wrapped.args(extra);
     wrapped.arg(cmd.get_program());
     wrapped.args(cmd.get_args());
     if let Some(dir) = cmd.get_current_dir() {
@@ -62,6 +78,24 @@ mod tests {
     fn no_args() {
         let wrapped = under_strace(Command::new("true"));
         assert_eq!(wrapped.get_args().collect::<Vec<_>>().len(), 3);
+    }
+
+    #[test]
+    fn extra_args_injected() {
+        let mut cmd = Command::new("echo");
+        cmd.arg("hello");
+        let wrapped = under_strace_with(cmd, ["-o", "/dev/fd/3"]);
+        assert_eq!(
+            wrapped.get_args().collect::<Vec<_>>(),
+            vec![
+                OsStr::new("--absolute-timestamps=format:unix,precision:us"),
+                OsStr::new("--follow-forks"),
+                OsStr::new("-o"),
+                OsStr::new("/dev/fd/3"),
+                OsStr::new("echo"),
+                OsStr::new("hello"),
+            ]
+        );
     }
 
     #[test]
