@@ -114,17 +114,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "clap2man"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfb68d8278fa7089c91066c8166a426021bb339de4ea72ccc9a08a1f0c13653f"
-dependencies = [
- "clap",
- "man",
- "thiserror",
-]
-
-[[package]]
 name = "clap_builder"
 version = "4.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -134,15 +123,6 @@ dependencies = [
  "anstyle",
  "clap_lex",
  "strsim",
-]
-
-[[package]]
-name = "clap_complete"
-version = "4.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db8b397918185f0161ff3d6fcaa9e4bfc09b8367caf6e1d4a2848e5477ed027b"
-dependencies = [
- "clap",
 ]
 
 [[package]]
@@ -265,15 +245,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
-name = "man"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebf5fa795187a80147b1ac10aaedcf5ffd3bbeb1838bda61801a1c9ad700a1c9"
-dependencies = [
- "roff",
-]
-
-[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -390,21 +361,12 @@ name = "restrace"
 version = "0.1.0"
 dependencies = [
  "clap",
- "clap2man",
- "clap_complete",
  "color-eyre",
  "libc",
- "man",
  "tokio",
  "tokio-stream",
  "tracing-subscriber",
 ]
-
-[[package]]
-name = "roff"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e33e4fb37ba46888052c763e4ec2acfedd8f00f62897b630cadb6298b833675e"
 
 [[package]]
 name = "rustc-demangle"
@@ -452,26 +414,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "thiserror"
-version = "2.0.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
-dependencies = [
- "thiserror-impl",
-]
-
-[[package]]
-name = "thiserror-impl"
-version = "2.0.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

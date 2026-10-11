@@ -8,9 +8,13 @@ license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/lpenz/restrace"
 repository = "https://github.com/lpenz/restrace"
-build = "build.rs"
 categories = ["command-line-utilities"]
 keywords = ["command-line"]
+
+[[bin]]
+name = "restrace"
+path = "src/bin/restrace.rs"
+required-features = ["tokio"]
 
 [dependencies]
 clap = { version = "4.6.2", features = ["derive"] }
@@ -23,39 +27,3 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 [features]
 default = ["tokio"]
 tokio = ["dep:tokio-stream"]
-
-[build-dependencies]
-clap = { version = "4.6.2", features = ["derive"] }
-clap2man = "0.1.1"
-clap_complete = "4.6.7"
-color-eyre = "0.6.5"
-man = "0.3.0"
-
-[package.metadata.deb]
-section = "utils"
-extended-description = """\
-restrace runs a command under strace and emits the parsed system calls,
-either to stderr or to a file.
-"""
-assets = [
-    ["target/release/restrace.1", "usr/share/man/man1/", "644"],
-    ["target/release/restrace", "usr/bin/", "755"],
-    ["LICENSE", "usr/share/doc/restrace/", "644"],
-    ["AUTHORS", "usr/share/doc/restrace/", "644"],
-    ["README.md", "usr/share/doc/restrace/", "644"],
-    ["target/release/restrace.bash", "/usr/share/bash-completion/completions/", "644"],
-    ["target/release/_restrace", "/usr/share/zsh/site-functions/", "644"],
-    ["target/release/restrace.fish", "/usr/share/fish/vendor_completions.d/", "644"],
-]
-
-[package.metadata.generate-rpm]
-assets = [
-    { source = "target/release/restrace.1", dest = "/usr/share/man/man1/", mode = "644" },
-    { source = "target/release/restrace", dest = "/usr/bin/", mode = "755" },
-    { source = "LICENSE", dest = "/usr/share/doc/restrace/", mode = "644" },
-    { source = "AUTHORS", dest = "/usr/share/doc/restrace/", mode = "644" },
-    { source = "README.md", dest = "/usr/share/doc/restrace/", mode = "644" },
-    { source = "target/release/restrace.bash", dest = "/usr/share/bash-completion/completions/", mode = "644" },
-    { source = "target/release/_restrace", dest = "/usr/share/zsh/site-functions/", mode = "644" },
-    { source = "target/release/restrace.fish", dest = "/usr/share/fish/vendor_completions.d/", mode = "644" },
-]
