@@ -1,0 +1,7 @@
+# The README mirrors the crate documentation, including Rust code blocks.
+# proselint is a prose linter but also inspects fenced code blocks, where the
+# `"..."` string literals and `println!` macros trip checks (curly quotes and
+# exclamation marks) that cannot be satisfied without corrupting the example
+# code. Disable proselint for this repository.
+[linters.proselint]
+mode = "disabled"
