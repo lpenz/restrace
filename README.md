@@ -11,9 +11,11 @@ the emitted system calls into Rust values.
 It is easier to explain the crate in terms of the types it provides:
 
 - [`Event`]: a single, complete line of `strace` output, carrying the
-  pid, the timestamp and a [`syscalls::Syscall`].
-- [`syscalls`]: typed records for the supported system calls behind the
-  [`syscalls::Syscall`] enum, plus a [`syscalls::Generic`] fallback.
+  pid, the timestamp and an [`Action`].
+- [`Action`]: what the line reports: a system call record or the [`Exit`]
+  that terminated the process.
+- [`syscalls`]: typed records for the supported system calls, plus a
+  [`syscalls::Generic`] fallback for calls without a dedicated type.
 - [`stdprocess`]: run a [`std::process::Command`] under `strace` and get a
   blocking iterator of [`Event`]s with [`stdprocess::stream`].
 - [`tokio`]: the same for a `tokio::process::Command`, as an async stream
@@ -42,7 +44,9 @@ assert_eq!(line.pid, 251751);
 
 Every supported call parses into its own type inside [`syscalls`]; calls
 without a dedicated type fall back to [`syscalls::Generic`], which keeps
-the raw arguments and return value.
+the raw arguments and return value. The `+++ exited with ... +++` and
+`+++ killed by ... +++` lines that report the end of a traced process
+parse into [`Exit`], carried as [`Action::Exit`].
 
 ## Reconstructing split calls
 
@@ -104,8 +108,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 [`Event`]: https://docs.rs/restrace/latest/restrace/struct.Event.html
+[`Action`]: https://docs.rs/restrace/latest/restrace/enum.Action.html
+[`Action::Exit`]: https://docs.rs/restrace/latest/restrace/enum.Action.html#variant.Exit
 [`syscalls`]: https://docs.rs/restrace/latest/restrace/syscalls/index.html
-[`syscalls::Syscall`]: https://docs.rs/restrace/latest/restrace/syscalls/enum.Syscall.html
+[`Exit`]: https://docs.rs/restrace/latest/restrace/enum.Exit.html
 [`syscalls::Generic`]: https://docs.rs/restrace/latest/restrace/syscalls/struct.Generic.html
 [`stdprocess`]: https://docs.rs/restrace/latest/restrace/stdprocess/index.html
 [`stdprocess::stream`]: https://docs.rs/restrace/latest/restrace/stdprocess/fn.stream.html

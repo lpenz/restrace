@@ -2,35 +2,21 @@
 // This file is subject to the terms and conditions defined in
 // file 'LICENSE', which is part of this source code package.
 
-//! The [`Syscall`] enum: every supported system call record.
+//! The [`Action`] enum: a system call record or a process exit.
 
-use super::chdir::Chdir;
-use super::clone::Clone;
-use super::clone3::Clone3;
-use super::close::Close;
-use super::creat::Creat;
-use super::execve::Execve;
-use super::execveat::Execveat;
-use super::fchdir::Fchdir;
-use super::fork::Fork;
-use super::generic::Generic;
-use super::mkdir::Mkdir;
-use super::mkdirat::Mkdirat;
-use super::open::Open;
-use super::openat::Openat;
-use super::parse::ParseError;
-use super::rename::Rename;
-use super::renameat::Renameat;
-use super::renameat2::Renameat2;
-use super::rmdir::Rmdir;
-use super::vfork::Vfork;
+use crate::exit::Exit;
+use crate::syscalls::{
+    Chdir, Clone, Clone3, Close, Creat, Execve, Execveat, Fchdir, Fork, Generic, Mkdir, Mkdirat,
+    Open, Openat, ParseError, Rename, Renameat, Renameat2, Rmdir, Vfork,
+};
 use std::fmt;
 use std::str::FromStr;
 
-/// A system call record, as one of the supported call types or, as a
-/// fallback, a generic [`Generic`] call that no dedicated type parses.
+/// What a traced process did: a supported system call, the [`Generic`]
+/// fallback for a call that no dedicated type parses, or the [`Exit`] that
+/// terminated the process.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Syscall {
+pub enum Action {
     /// A `chdir(2)` call.
     Chdir(Chdir),
     /// A `clone(2)` call.
@@ -45,6 +31,8 @@ pub enum Syscall {
     Execve(Execve),
     /// An `execveat(2)` call.
     Execveat(Execveat),
+    /// The exit of the traced process.
+    Exit(Exit),
     /// An `fchdir(2)` call.
     Fchdir(Fchdir),
     /// A `fork(2)` call.
@@ -71,7 +59,7 @@ pub enum Syscall {
     Generic(Generic),
 }
 
-impl fmt::Display for Syscall {
+impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Chdir(syscall) => syscall.fmt(f),
@@ -81,6 +69,7 @@ impl fmt::Display for Syscall {
             Self::Creat(syscall) => syscall.fmt(f),
             Self::Execve(syscall) => syscall.fmt(f),
             Self::Execveat(syscall) => syscall.fmt(f),
+            Self::Exit(exit) => exit.fmt(f),
             Self::Fchdir(syscall) => syscall.fmt(f),
             Self::Fork(syscall) => syscall.fmt(f),
             Self::Mkdir(syscall) => syscall.fmt(f),
@@ -98,8 +87,9 @@ impl fmt::Display for Syscall {
 }
 
 /// Parses a line as [`Display`](fmt::Display) writes it, dispatching to the
-/// matching call type; calls that no type parses fall back to [`Generic`].
-impl FromStr for Syscall {
+/// matching call or [`Exit`] type; calls that no type parses fall back to
+/// [`Generic`].
+impl FromStr for Action {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, ParseError> {
@@ -123,6 +113,9 @@ impl FromStr for Syscall {
         }
         if let Ok(syscall) = Execveat::from_str(s) {
             return Ok(Self::Execveat(syscall));
+        }
+        if let Ok(exit) = Exit::from_str(s) {
+            return Ok(Self::Exit(exit));
         }
         if let Ok(syscall) = Fchdir::from_str(s) {
             return Ok(Self::Fchdir(syscall));
@@ -167,25 +160,26 @@ mod tests {
 
     #[test]
     fn parse_variants() {
-        let is_chdir: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Chdir(_));
-        let is_clone: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Clone(_));
-        let is_clone3: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Clone3(_));
-        let is_close: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Close(_));
-        let is_creat: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Creat(_));
-        let is_execve: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Execve(_));
-        let is_execveat: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Execveat(_));
-        let is_fchdir: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Fchdir(_));
-        let is_fork: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Fork(_));
-        let is_mkdir: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Mkdir(_));
-        let is_mkdirat: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Mkdirat(_));
-        let is_open: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Open(_));
-        let is_openat: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Openat(_));
-        let is_rename: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Rename(_));
-        let is_renameat: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Renameat(_));
-        let is_renameat2: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Renameat2(_));
-        let is_rmdir: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Rmdir(_));
-        let is_vfork: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Vfork(_));
-        let is_generic: fn(&Syscall) -> bool = |s| matches!(s, Syscall::Generic(_));
+        let is_chdir: fn(&Action) -> bool = |s| matches!(s, Action::Chdir(_));
+        let is_clone: fn(&Action) -> bool = |s| matches!(s, Action::Clone(_));
+        let is_clone3: fn(&Action) -> bool = |s| matches!(s, Action::Clone3(_));
+        let is_close: fn(&Action) -> bool = |s| matches!(s, Action::Close(_));
+        let is_creat: fn(&Action) -> bool = |s| matches!(s, Action::Creat(_));
+        let is_execve: fn(&Action) -> bool = |s| matches!(s, Action::Execve(_));
+        let is_execveat: fn(&Action) -> bool = |s| matches!(s, Action::Execveat(_));
+        let is_exit: fn(&Action) -> bool = |s| matches!(s, Action::Exit(_));
+        let is_fchdir: fn(&Action) -> bool = |s| matches!(s, Action::Fchdir(_));
+        let is_fork: fn(&Action) -> bool = |s| matches!(s, Action::Fork(_));
+        let is_mkdir: fn(&Action) -> bool = |s| matches!(s, Action::Mkdir(_));
+        let is_mkdirat: fn(&Action) -> bool = |s| matches!(s, Action::Mkdirat(_));
+        let is_open: fn(&Action) -> bool = |s| matches!(s, Action::Open(_));
+        let is_openat: fn(&Action) -> bool = |s| matches!(s, Action::Openat(_));
+        let is_rename: fn(&Action) -> bool = |s| matches!(s, Action::Rename(_));
+        let is_renameat: fn(&Action) -> bool = |s| matches!(s, Action::Renameat(_));
+        let is_renameat2: fn(&Action) -> bool = |s| matches!(s, Action::Renameat2(_));
+        let is_rmdir: fn(&Action) -> bool = |s| matches!(s, Action::Rmdir(_));
+        let is_vfork: fn(&Action) -> bool = |s| matches!(s, Action::Vfork(_));
+        let is_generic: fn(&Action) -> bool = |s| matches!(s, Action::Generic(_));
         for (line, variant) in [
             ("chdir(\"/tmp\") = 0", is_chdir),
             (
@@ -203,6 +197,8 @@ mod tests {
                 "execveat(AT_FDCWD, \"prog\", [\"prog\"], [], 0) = 0",
                 is_execveat,
             ),
+            ("+++ exited with 0 +++", is_exit),
+            ("+++ killed by SIGKILL +++", is_exit),
             ("fchdir(0) = 0", is_fchdir),
             ("fork() = 123", is_fork),
             ("mkdir(\"/tmp/dir\", 0755) = 0", is_mkdir),
@@ -222,21 +218,21 @@ mod tests {
             ("vfork() = 123", is_vfork),
             ("spill(0x1, 0x2) = 0", is_generic),
         ] {
-            let syscall = Syscall::from_str(line).unwrap();
+            let syscall = Action::from_str(line).unwrap();
             assert!(variant(&syscall), "line {line:?} parsed wrongly");
         }
     }
 
     #[test]
     fn generic_fallback_on_invalid_known() {
-        let syscall = Syscall::from_str("execve(\"/bin/echo\", [\"echo\", 0x1], []) = 0").unwrap();
-        assert!(matches!(syscall, Syscall::Generic(_)));
+        let syscall = Action::from_str("execve(\"/bin/echo\", [\"echo\", 0x1], []) = 0").unwrap();
+        assert!(matches!(syscall, Action::Generic(_)));
     }
 
     #[test]
     fn parse_invalid() {
-        assert!(Syscall::from_str("").is_err());
-        assert!(Syscall::from_str("no syscall here").is_err());
+        assert!(Action::from_str("").is_err());
+        assert!(Action::from_str("no syscall here").is_err());
     }
 
     #[test]
@@ -248,8 +244,10 @@ mod tests {
             "execve(\"/bin/echo\", [\"echo\", \"hello\"], [\"PATH=/bin\"]) = 0",
             "clone3({flags=CLONE_VM, exit_signal=SIGCHLD}, 88) = -1 EPERM",
             "spill(0x1000, -7, \"a, b\") = 0",
+            "+++ exited with 3 +++",
+            "+++ killed by SIGSEGV (core dumped) +++",
         ] {
-            let syscall = Syscall::from_str(line).unwrap();
+            let syscall = Action::from_str(line).unwrap();
             assert_eq!(syscall.to_string(), line);
         }
     }

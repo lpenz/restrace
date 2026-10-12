@@ -8,7 +8,11 @@
 //!
 //! ```text
 //! 251751 1699999999.123456 openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+//! 251751 1699999999.123999 +++ exited with 0 +++
 //! ```
+//!
+//! A line records one [`Action`]: a system call the process made, or the
+//! [`Exit`](crate::Exit) that terminated it.
 //!
 //! strace only prints the bare `<pid> ` prefix when it is tracing a command
 //! with `--follow-forks` and redirecting the trace with `-o`, as done by
@@ -18,13 +22,14 @@
 //! The bracketed `[pid  251751]` form is also accepted when parsing, and is how
 //! [`fmt::Display`] renders lines.
 
-use crate::syscalls::{ParseError, Syscall};
+use crate::action::Action;
+use crate::syscalls::ParseError;
 use std::fmt;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// A fully parsed line of strace output: a PID, a timestamp, and a system
-/// call.
+/// A fully parsed line of strace output: a PID, a timestamp, and the
+/// [`Action`] the process took.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event {
     /// The ID of the traced process that performed the call.
@@ -33,8 +38,8 @@ pub struct Event {
     pub pid: u32,
     /// When the call was made, as a Unix time with microsecond precision.
     pub time: SystemTime,
-    /// The system call and its return value.
-    pub syscall: Syscall,
+    /// The system call the process made, or its exit.
+    pub action: Action,
 }
 
 /// Parses the pid prefix of a line, in either of the two forms strace prints:
@@ -85,15 +90,15 @@ fn parse_time(input: &str) -> Result<(SystemTime, &str), ParseError> {
 }
 
 impl Event {
-    /// Builds a line record from its PID, time and system call.
+    /// Builds a line record from its PID, time and action.
     #[must_use]
-    pub fn from_parts(pid: u32, time: SystemTime, syscall: Syscall) -> Self {
-        Self { pid, time, syscall }
+    pub fn from_parts(pid: u32, time: SystemTime, action: Action) -> Self {
+        Self { pid, time, action }
     }
 
-    /// Splits a line into its pid, its time and the remaining syscall text.
+    /// Splits a line into its pid, its time and the remaining action text.
     ///
-    /// This is the part of [`FromStr`] that does not depend on the syscall
+    /// This is the part of [`FromStr`] that does not depend on the action
     /// itself, shared with the reconstruction of multi-line calls.
     pub(crate) fn split_prefix(s: &str) -> Result<(u32, SystemTime, &str), ParseError> {
         let (pid, ret) = parse_pid(s.trim())?;
@@ -115,7 +120,7 @@ impl fmt::Display for Event {
             since_epoch.as_secs(),
             since_epoch.subsec_micros()
         )?;
-        write!(f, "{}", self.syscall)
+        write!(f, "{}", self.action)
     }
 }
 
@@ -127,8 +132,8 @@ impl FromStr for Event {
 
     fn from_str(s: &str) -> Result<Self, ParseError> {
         let (pid, time, ret) = Self::split_prefix(s)?;
-        let syscall = Syscall::from_str(ret)?;
-        Ok(Self { pid, time, syscall })
+        let action = Action::from_str(ret)?;
+        Ok(Self { pid, time, action })
     }
 }
 
@@ -145,7 +150,7 @@ mod tests {
         let line = Event::from_parts(
             12345,
             epoch(1_699_999_999, 123_456),
-            Syscall::from_str("open(\"/tmp\", O_RDONLY) = 3").unwrap(),
+            Action::from_str("open(\"/tmp\", O_RDONLY) = 3").unwrap(),
         );
         assert_eq!(
             line.to_string(),
@@ -158,7 +163,7 @@ mod tests {
         let line = Event::from_parts(
             42,
             epoch(1_700_000_000, 1),
-            Syscall::from_str("close(0) = 0").unwrap(),
+            Action::from_str("close(0) = 0").unwrap(),
         );
         assert_eq!(
             line.to_string(),
@@ -172,14 +177,14 @@ mod tests {
             Event::from_str("[pid  1234] 1699999999.123456 open(\"/tmp\", O_RDONLY) = 3").unwrap();
         assert_eq!(line.pid, 1234);
         assert_eq!(line.time, epoch(1_699_999_999, 123_456));
-        assert!(matches!(line.syscall, Syscall::Open(_)));
+        assert!(matches!(line.action, Action::Open(_)));
     }
 
     #[test]
     fn parse_generic() {
         let line = Event::from_str("[pid 1] 1700000000.000000 spill(0x1, 0x2) = 0").unwrap();
         assert_eq!(line.pid, 1);
-        assert!(matches!(line.syscall, Syscall::Generic(_)));
+        assert!(matches!(line.action, Action::Generic(_)));
     }
 
     #[test]
@@ -189,14 +194,24 @@ mod tests {
                 .unwrap();
         assert_eq!(line.pid, 251751);
         assert_eq!(line.time, epoch(1_700_000_000, 0));
-        assert!(matches!(line.syscall, Syscall::Execve(_)));
+        assert!(matches!(line.action, Action::Execve(_)));
     }
 
     #[test]
     fn parse_bare_pid_padded() {
         let line = Event::from_str("123  1700000000.000000 close(0) = 0").unwrap();
         assert_eq!(line.pid, 123);
-        assert!(matches!(line.syscall, Syscall::Close(_)));
+        assert!(matches!(line.action, Action::Close(_)));
+    }
+
+    #[test]
+    fn parse_exit() {
+        let line = Event::from_str("123 1700000000.000000 +++ exited with 3 +++").unwrap();
+        assert_eq!(line.pid, 123);
+        assert_eq!(line.time, epoch(1_700_000_000, 0));
+        assert_eq!(line.action, Action::Exit(crate::Exit::Code(3)));
+        let killed = Event::from_str("123 1700000000.000000 +++ killed by SIGKILL +++").unwrap();
+        assert!(matches!(killed.action, Action::Exit(_)));
     }
 
     #[test]
@@ -220,6 +235,8 @@ mod tests {
             "[pid 12345] 1699999999.123456 open(\"/tmp\", O_RDONLY) = 3",
             "[pid    42] 1700000000.000001 close(0) = 0",
             "[pid  2345] 1700000000.050000 execve(\"/bin/echo\", [\"echo\"], []) = 0",
+            "[pid  2345] 1700000000.060000 +++ exited with 0 +++",
+            "[pid  2345] 1700000000.070000 +++ killed by SIGKILL +++",
         ] {
             assert_eq!(Event::from_str(line).unwrap().to_string(), line);
         }

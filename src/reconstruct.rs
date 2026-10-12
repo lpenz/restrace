@@ -31,7 +31,7 @@
 //! printed as `= ?`, such as restarted `rt_sigsuspend(2)` calls.
 
 use crate::Event;
-use crate::syscalls::Syscall;
+use crate::action::Action;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::SystemTime;
@@ -83,12 +83,14 @@ impl Fragment {
 /// that `strace` splits within a single event.
 ///
 /// Feed lines in the order they were read with [`Reconstructor::push`]; a
-/// complete call is returned right away, while an unfinished call is kept
-/// until its resumed line arrives. Lines that are not system calls, such as
-/// the `+++ exited ... +++` messages, are ignored.
+/// complete line is returned right away, while an unfinished call is kept
+/// until its resumed line arrives. Lines that are neither a call nor an exit,
+/// such as the `--- SIGCHLD ... ---` messages, are ignored.
 ///
-/// The unfinished piece of a pid that never resumes, because its process died
-/// mid-call, stays in memory; it is bounded by the number of such pids.
+/// A process that dies mid-call never resumes, so the exit line that reports
+/// it also drops the pid's unfinished piece. The unfinished piece of a pid
+/// that no line ever closes stays in memory; it is bounded by the number of
+/// such pids.
 #[derive(Debug, Default)]
 pub(crate) struct Reconstructor {
     unfinished: HashMap<u32, (SystemTime, String)>,
@@ -112,15 +114,20 @@ impl Reconstructor {
     /// was never seen.
     pub(crate) fn push(&mut self, line: &str) -> Option<Event> {
         match Fragment::parse(line)? {
-            Fragment::Complete(event) => Some(event),
+            Fragment::Complete(event) => {
+                if matches!(event.action, Action::Exit(_)) {
+                    self.unfinished.remove(&event.pid);
+                }
+                Some(event)
+            }
             Fragment::Unfinished { pid, time, prefix } => {
                 self.unfinished.insert(pid, (time, prefix));
                 None
             }
             Fragment::Resumed { pid, suffix } => {
                 let (time, prefix) = self.unfinished.remove(&pid)?;
-                let syscall = Syscall::from_str(&format!("{prefix}{suffix}")).ok()?;
-                Some(Event::from_parts(pid, time, syscall))
+                let action = Action::from_str(&format!("{prefix}{suffix}")).ok()?;
+                Some(Event::from_parts(pid, time, action))
             }
         }
     }
@@ -144,7 +151,7 @@ mod tests {
             .unwrap();
         assert_eq!(event.pid, 394527);
         assert_eq!(event.time, epoch(1_700_000_000, 0));
-        assert!(matches!(event.syscall, Syscall::Close(_)));
+        assert!(matches!(event.action, Action::Close(_)));
     }
 
     #[test]
@@ -172,7 +179,7 @@ mod tests {
         // The event keeps the time of the unfinished line, when the call was
         // entered, which is what strace reports for calls that are not split.
         assert_eq!(event.time, epoch(1_791_802_869, 793_329));
-        assert_eq!(event.syscall.to_string(), "mystery(0x1, 2, -3, \"a\") = 0");
+        assert_eq!(event.action.to_string(), "mystery(0x1, 2, -3, \"a\") = 0");
     }
 
     #[test]
@@ -186,9 +193,9 @@ mod tests {
         let event = reconstructor
             .push("1 1700000000.000100 <... openat resumed>) = 3")
             .unwrap();
-        assert!(matches!(event.syscall, Syscall::Openat(_)));
+        assert!(matches!(event.action, Action::Openat(_)));
         assert_eq!(
-            event.syscall.to_string(),
+            event.action.to_string(),
             "openat(AT_FDCWD, \"/tmp\", O_RDONLY) = 3"
         );
     }
@@ -206,13 +213,13 @@ mod tests {
             .push("2 1700000000.000002 close(0) = 0")
             .unwrap();
         assert_eq!(other.pid, 2);
-        assert!(matches!(other.syscall, Syscall::Close(_)));
+        assert!(matches!(other.action, Action::Close(_)));
         // The first pid resumes and is joined with its own unfinished line.
         let event = reconstructor
             .push("1 1700000000.000003 <... openat resumed>) = 3")
             .unwrap();
         assert_eq!(event.pid, 1);
-        assert!(matches!(event.syscall, Syscall::Openat(_)));
+        assert!(matches!(event.action, Action::Openat(_)));
         assert_eq!(event.time, epoch(1_700_000_000, 1));
     }
 
@@ -245,13 +252,8 @@ mod tests {
     }
 
     #[test]
-    fn non_syscall_lines_are_ignored() {
+    fn non_action_lines_are_ignored() {
         let mut reconstructor = Reconstructor::new();
-        assert!(
-            reconstructor
-                .push("1 1700000000.000000 +++ exited with 0 +++")
-                .is_none()
-        );
         assert!(
             reconstructor
                 .push(
@@ -262,6 +264,39 @@ mod tests {
         );
         assert!(reconstructor.push("not a trace line").is_none());
         assert!(reconstructor.push("").is_none());
+    }
+
+    #[test]
+    fn exit_is_emitted() {
+        let mut reconstructor = Reconstructor::new();
+        let event = reconstructor
+            .push("1 1700000000.000000 +++ exited with 0 +++")
+            .unwrap();
+        assert_eq!(event.pid, 1);
+        assert_eq!(event.action, Action::Exit(crate::Exit::Code(0)));
+    }
+
+    #[test]
+    fn exit_evicts_unfinished() {
+        let mut reconstructor = Reconstructor::new();
+        // A process killed mid-call prints an unfinished line that never
+        // resumes, followed by its killed/exit line.
+        assert!(
+            reconstructor
+                .push("1 1700000000.000000 wait4(-1 <unfinished ...>")
+                .is_none()
+        );
+        let event = reconstructor
+            .push("1 1700000000.000100 +++ killed by SIGKILL +++")
+            .unwrap();
+        assert!(matches!(event.action, Action::Exit(_)));
+        // The stale unfinished piece was dropped when the pid exited, so a
+        // later resumed line for the same pid is not joined with dead state.
+        assert!(
+            reconstructor
+                .push("1 1700000000.000200 <... wait4 resumed>, 0) = 0")
+                .is_none()
+        );
     }
 
     #[test]
@@ -276,7 +311,7 @@ mod tests {
             .push("[pid  1234] 1791802869.793397 <... mystery resumed>, 0x2) = 0")
             .unwrap();
         assert_eq!(event.pid, 1234);
-        assert_eq!(event.syscall.to_string(), "mystery(0x1, 0x2) = 0");
+        assert_eq!(event.action.to_string(), "mystery(0x1, 0x2) = 0");
     }
 
     #[test]

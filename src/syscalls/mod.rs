@@ -6,6 +6,9 @@
 //!
 //! The concrete types are re-exported here; the modules that hold them are
 //! private, so the layout of this directory is not part of the public API.
+//!
+//! The [`Action`](crate::Action) enum that unifies these records with the
+//! process [`Exit`](crate::Exit) lives at the crate root.
 
 mod chdir;
 mod clone;
@@ -31,7 +34,6 @@ mod renameat;
 mod renameat2;
 mod result;
 mod rmdir;
-mod syscall;
 mod vfork;
 
 pub use chdir::Chdir;
@@ -58,5 +60,4 @@ pub use renameat::Renameat;
 pub use renameat2::{Renameat2, Renameat2Flags};
 pub use result::OkResult;
 pub use rmdir::Rmdir;
-pub use syscall::Syscall;
 pub use vfork::Vfork;

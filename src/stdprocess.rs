@@ -80,9 +80,9 @@ where
 /// The trace is read from a dedicated pipe (see [`TRACE_FD`]), keeping the
 /// standard output and standard error of the traced process untouched. Calls
 /// that `strace` splits into an `<unfinished ...>` line and a `<... resumed>`
-/// line are joined into a single [`Event`]; the other lines of strace output
-/// that do not form a system call, such as the `+++ exited ... +++` messages,
-/// are skipped, so that the iterator only yields the parsed trace. Because
+/// line are joined into a single [`Event`]; lines that are neither a system
+/// call nor a process exit, such as the `--- SIGCHLD ... ---` messages, are
+/// skipped, so that the iterator only yields the parsed trace. Because
 /// the trace is redirected with `-o` and `--follow-forks`, every line carries
 /// a bare pid prefix (as parsed by [`Event`]).
 ///

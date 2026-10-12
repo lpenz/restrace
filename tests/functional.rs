@@ -68,8 +68,15 @@ async fn traces_a_single_process() {
     assert!(
         lines
             .iter()
-            .any(|line| matches!(line.syscall, restrace::syscalls::Syscall::Openat(_))),
+            .any(|line| matches!(line.action, restrace::Action::Openat(_))),
         "expected a dedicated syscall type to be parsed: {lines:?}"
+    );
+    // strace reports the end of the process as an exit event.
+    assert!(
+        lines
+            .iter()
+            .any(|line| matches!(line.action, restrace::Action::Exit(_))),
+        "expected an exit event: {lines:?}"
     );
     // `--follow-forks` with the trace redirected by `-o` makes strace prefix
     // every line with a pid, so every parsed line carries one.
