@@ -13,6 +13,7 @@
 //! the `::tokio` path.
 
 use crate::Event;
+use crate::reconstruct::Reconstructor;
 use crate::stdprocess::TRACE_FD;
 use ::tokio::fs::File as TokioFile;
 use ::tokio::io::{AsyncBufReadExt, BufReader, Lines};
@@ -43,15 +44,20 @@ pub fn under_strace(cmd: Command) -> Command {
 /// A stream of [`Event`]s read from a command running under `strace`.
 ///
 /// The trace is read from a dedicated pipe (see [`TRACE_FD`]), keeping the
-/// standard output and standard error of the traced process untouched. Lines
-/// of strace output that do not form a complete, single system call are
-/// skipped, so that the stream only yields the parsed trace: fragments such
-/// as `<unfinished ...>`, `<... resumed>` and the `+++ exited ... +++`
-/// messages. Because the trace is redirected with `-o` and `--follow-forks`,
-/// every line carries a bare pid prefix (as parsed by [`Event`]).
+/// standard output and standard error of the traced process untouched. Calls
+/// that `strace` splits into an `<unfinished ...>` line and a `<... resumed>`
+/// line are joined into a single [`Event`]; the other lines of strace output
+/// that do not form a system call, such as the `+++ exited ... +++` messages,
+/// are skipped, so that the stream only yields the parsed trace. Because the
+/// trace is redirected with `-o` and `--follow-forks`, every line carries a
+/// bare pid prefix (as parsed by [`Event`]).
+///
+/// A reconstructed event is yielded when its resumed line is reached, so
+/// events are not necessarily ordered by timestamp.
 pub struct EventStream {
     child: Child,
     lines: Lines<BufReader<TokioFile>>,
+    reconstructor: Reconstructor,
 }
 
 impl EventStream {
@@ -73,7 +79,7 @@ impl Stream for EventStream {
             match Pin::new(&mut this.lines).poll_next_line(cx) {
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(Ok(Some(text))) => {
-                    if let Ok(line) = text.parse::<Event>() {
+                    if let Some(line) = this.reconstructor.push(&text) {
                         return Poll::Ready(Some(line));
                     }
                 }
@@ -149,6 +155,7 @@ pub fn stream(cmd: Command) -> ::std::io::Result<EventStream> {
     Ok(EventStream {
         child,
         lines: BufReader::new(trace).lines(),
+        reconstructor: Reconstructor::new(),
     })
 }
 

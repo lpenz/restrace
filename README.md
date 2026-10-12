@@ -44,6 +44,23 @@ Every supported call parses into its own type inside [`syscalls`]; calls
 without a dedicated type fall back to [`syscalls::Generic`], which keeps
 the raw arguments and return value.
 
+## Reconstructing split calls
+
+When more than one process or thread is traced at a time, a call that is
+still running when another traced process emits output is printed in two
+lines: the beginning ends with `<unfinished ...>` and the end begins with
+`<... name resumed>`. [`stdprocess::stream`] and [`tokio::stream`] join
+the two lines of every pid into the single [`Event`] the call would
+otherwise produce, keeping the pid and the timestamp of the unfinished
+line.
+
+Reconstructed events keep the timestamp of the unfinished line, so they
+are not necessarily ordered by time: a call that started early can be
+emitted after one that completed in between. A resumed call whose merged
+text is not decodable, such as one that resumes with the indeterminate
+result `= ?`, is dropped, as it would be if `strace` had printed it on one
+line.
+
 ## Running a command under `strace`
 
 [`stdprocess::stream`] wraps a [`std::process::Command`] under `strace` and

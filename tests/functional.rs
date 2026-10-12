@@ -117,3 +117,69 @@ async fn parsed_lines_round_trip() {
         assert_eq!(line, reparsed);
     }
 }
+
+/// The command used by the reconstruction tests: several processes doing file
+/// calls at the same time make `strace` split many of them into an
+/// `<unfinished ...>` line and a `<... name resumed>` line.
+const SPLIT_CALLS_CMD: &[&str] = &[
+    "sh",
+    "-c",
+    "for i in 1 2 3 4 5 6 7 8; do ls /usr/bin >/dev/null & done; wait",
+];
+
+#[::tokio::test]
+async fn stream_reconstructs_split_calls() {
+    if !strace_available() || !strace_can_trace_forks() {
+        return;
+    }
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", SPLIT_CALLS_CMD[2]]);
+    let events = trace(cmd).await;
+
+    assert!(!events.is_empty(), "expected some parsed syscalls");
+    assert!(
+        events.iter().all(|event| event.pid > 0),
+        "expected a pid on every event: {events:?}"
+    );
+    // A stream that only accepted complete, single-line calls would parse
+    // strictly fewer events than the ones `strace` splits and reconstructs.
+    // The reference is a separate run of the same command, so the comparison
+    // is only safe because the command produces far more split calls than
+    // complete ones; the same-input check is the `reconstructs_real_split_calls`
+    // unit test in `src/reconstruct.rs`.
+    let text = raw_trace(SPLIT_CALLS_CMD);
+    let single_line = text
+        .lines()
+        .filter(|line| line.parse::<Event>().is_ok())
+        .count();
+    assert!(single_line > 0, "expected some complete syscalls");
+    assert!(
+        events.len() > single_line,
+        "expected the stream to reconstruct the split calls: \
+         {} events vs {single_line} single-line calls",
+        events.len()
+    );
+}
+
+/// Runs `cmd` under `strace`, capturing the raw trace to a temporary file.
+fn raw_trace(cmd: &[&str]) -> String {
+    // Tests run in parallel threads of the same process, so the path must be
+    // unique per call, not just per process.
+    static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!("restrace-trace-{}-{n}.log", std::process::id()));
+    let status = Command::new("strace")
+        .args([
+            "--absolute-timestamps=format:unix,precision:us",
+            "--follow-forks",
+            "-o",
+        ])
+        .arg(&path)
+        .args(cmd)
+        .status()
+        .expect("run strace");
+    assert!(status.success(), "strace failed");
+    let text = std::fs::read_to_string(&path).expect("read the raw trace");
+    std::fs::remove_file(&path).expect("remove the temporary trace");
+    text
+}

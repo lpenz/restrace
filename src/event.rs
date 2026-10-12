@@ -90,6 +90,16 @@ impl Event {
     pub fn from_parts(pid: u32, time: SystemTime, syscall: Syscall) -> Self {
         Self { pid, time, syscall }
     }
+
+    /// Splits a line into its pid, its time and the remaining syscall text.
+    ///
+    /// This is the part of [`FromStr`] that does not depend on the syscall
+    /// itself, shared with the reconstruction of multi-line calls.
+    pub(crate) fn split_prefix(s: &str) -> Result<(u32, SystemTime, &str), ParseError> {
+        let (pid, ret) = parse_pid(s.trim())?;
+        let (time, ret) = parse_time(ret)?;
+        Ok((pid, time, ret))
+    }
 }
 
 impl fmt::Display for Event {
@@ -116,9 +126,7 @@ impl FromStr for Event {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, ParseError> {
-        let s = s.trim();
-        let (pid, ret) = parse_pid(s)?;
-        let (time, ret) = parse_time(ret)?;
+        let (pid, time, ret) = Self::split_prefix(s)?;
         let syscall = Syscall::from_str(ret)?;
         Ok(Self { pid, time, syscall })
     }

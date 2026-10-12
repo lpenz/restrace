@@ -9,6 +9,7 @@
 //! inject extra `strace` arguments.
 
 use crate::Event;
+use crate::reconstruct::Reconstructor;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Lines};
@@ -77,15 +78,20 @@ where
 /// An iterator of [`Event`]s read from a command running under `strace`.
 ///
 /// The trace is read from a dedicated pipe (see [`TRACE_FD`]), keeping the
-/// standard output and standard error of the traced process untouched. Lines
-/// of strace output that do not form a complete, single system call are
-/// skipped, so that the iterator only yields the parsed trace: fragments such
-/// as `<unfinished ...>`, `<... resumed>` and the `+++ exited ... +++`
-/// messages. Because the trace is redirected with `-o` and `--follow-forks`,
-/// every line carries a bare pid prefix (as parsed by [`Event`]).
+/// standard output and standard error of the traced process untouched. Calls
+/// that `strace` splits into an `<unfinished ...>` line and a `<... resumed>`
+/// line are joined into a single [`Event`]; the other lines of strace output
+/// that do not form a system call, such as the `+++ exited ... +++` messages,
+/// are skipped, so that the iterator only yields the parsed trace. Because
+/// the trace is redirected with `-o` and `--follow-forks`, every line carries
+/// a bare pid prefix (as parsed by [`Event`]).
+///
+/// A reconstructed event is yielded when its resumed line is reached, so
+/// events are not necessarily ordered by timestamp.
 pub struct EventIter {
     child: Child,
     lines: Lines<BufReader<File>>,
+    reconstructor: Reconstructor,
 }
 
 impl EventIter {
@@ -105,7 +111,7 @@ impl Iterator for EventIter {
         loop {
             match self.lines.next() {
                 Some(Ok(text)) => {
-                    if let Ok(line) = text.parse::<Event>() {
+                    if let Some(line) = self.reconstructor.push(&text) {
                         return Some(line);
                     }
                 }
@@ -179,6 +185,7 @@ pub fn stream(cmd: Command) -> ::std::io::Result<EventIter> {
     Ok(EventIter {
         child,
         lines: BufReader::new(reader_file).lines(),
+        reconstructor: Reconstructor::new(),
     })
 }
 
