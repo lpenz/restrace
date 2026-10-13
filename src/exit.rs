@@ -34,6 +34,34 @@ pub enum Exit {
     },
 }
 
+impl Exit {
+    /// Returns the exit code if the process exited normally, or `None` if it
+    /// was killed by a signal.
+    #[must_use]
+    pub fn code(&self) -> Option<i32> {
+        match self {
+            Self::Code(code) => Some(*code),
+            Self::Signal { .. } => None,
+        }
+    }
+
+    /// Returns the name of the signal that killed the process, or `None` if
+    /// the process exited normally.
+    #[must_use]
+    pub fn signal(&self) -> Option<&str> {
+        match self {
+            Self::Code(_) => None,
+            Self::Signal { name, .. } => Some(name),
+        }
+    }
+
+    /// Returns whether the process exited normally with status code zero.
+    #[must_use]
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Code(0))
+    }
+}
+
 impl fmt::Display for Exit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -143,6 +171,24 @@ mod tests {
                 core_dumped: true,
             }
         );
+    }
+
+    #[test]
+    fn accessors() {
+        let code = Exit::Code(3);
+        assert_eq!(code.code(), Some(3));
+        assert_eq!(code.signal(), None);
+        assert!(!code.is_success());
+
+        assert!(Exit::Code(0).is_success());
+
+        let signal = Exit::Signal {
+            name: "SIGKILL".to_string(),
+            core_dumped: false,
+        };
+        assert_eq!(signal.code(), None);
+        assert_eq!(signal.signal(), Some("SIGKILL"));
+        assert!(!signal.is_success());
     }
 
     #[test]

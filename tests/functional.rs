@@ -87,6 +87,48 @@ async fn traces_a_single_process() {
 }
 
 #[::tokio::test]
+async fn exits_with_code() {
+    if !strace_available() {
+        return;
+    }
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", "exit 42"]);
+    let lines = trace(cmd).await;
+
+    let exit = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Exit(exit) => Some(exit),
+            _ => None,
+        })
+        .expect("expected an exit event");
+    assert_eq!(exit.code(), Some(42));
+    assert_eq!(exit.signal(), None);
+    assert!(!exit.is_success());
+}
+
+#[::tokio::test]
+async fn killed_by_signal() {
+    if !strace_available() {
+        return;
+    }
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", "kill -KILL $$"]);
+    let lines = trace(cmd).await;
+
+    let exit = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Exit(exit) => Some(exit),
+            _ => None,
+        })
+        .expect("expected an exit event");
+    assert_eq!(exit.code(), None);
+    assert_eq!(exit.signal(), Some("SIGKILL"));
+    assert!(!exit.is_success());
+}
+
+#[::tokio::test]
 async fn traces_forks() {
     if !strace_available() || !strace_can_trace_forks() {
         return;
