@@ -1,0 +1,8 @@
+{
+  // Each release section reuses the standard Added/Changed/Fixed headings,
+  // so duplicate headings are expected as long as they are in different
+  // sections. Only check for duplicates amongst siblings.
+  "config": {
+    "MD024": { "siblings_only": true }
+  }
+}
