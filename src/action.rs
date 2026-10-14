@@ -6,8 +6,9 @@
 
 use crate::exit::Exit;
 use crate::syscalls::{
-    Chdir, Clone, Clone3, Close, Creat, Execve, Execveat, Fchdir, Fork, Generic, Mkdir, Mkdirat,
-    Open, Openat, ParseError, Rename, Renameat, Renameat2, Rmdir, Vfork,
+    Access, Chdir, Clone, Clone3, Close, Creat, Execve, Execveat, Faccessat, Faccessat2, Fchdir,
+    Fork, Generic, Link, Linkat, Mkdir, Mkdirat, Open, Openat, ParseError, Rename, Renameat,
+    Renameat2, Rmdir, Symlink, Symlinkat, Unlink, Unlinkat, Vfork,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -17,6 +18,8 @@ use std::str::FromStr;
 /// terminated the process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
+    /// An `access(2)` call.
+    Access(Access),
     /// A `chdir(2)` call.
     Chdir(Chdir),
     /// A `clone(2)` call.
@@ -33,10 +36,18 @@ pub enum Action {
     Execveat(Execveat),
     /// The exit of the traced process.
     Exit(Exit),
+    /// An `faccessat(2)` call.
+    Faccessat(Faccessat),
+    /// An `faccessat2(2)` call.
+    Faccessat2(Faccessat2),
     /// An `fchdir(2)` call.
     Fchdir(Fchdir),
     /// A `fork(2)` call.
     Fork(Fork),
+    /// A `link(2)` call.
+    Link(Link),
+    /// A `linkat(2)` call.
+    Linkat(Linkat),
     /// A `mkdir(2)` call.
     Mkdir(Mkdir),
     /// A `mkdirat(2)` call.
@@ -53,6 +64,14 @@ pub enum Action {
     Renameat2(Renameat2),
     /// An `rmdir(2)` call.
     Rmdir(Rmdir),
+    /// A `symlink(2)` call.
+    Symlink(Symlink),
+    /// A `symlinkat(2)` call.
+    Symlinkat(Symlinkat),
+    /// An `unlink(2)` call.
+    Unlink(Unlink),
+    /// An `unlinkat(2)` call.
+    Unlinkat(Unlinkat),
     /// A `vfork(2)` call.
     Vfork(Vfork),
     /// A call that no dedicated type parses.
@@ -62,6 +81,7 @@ pub enum Action {
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Access(syscall) => syscall.fmt(f),
             Self::Chdir(syscall) => syscall.fmt(f),
             Self::Clone(syscall) => syscall.fmt(f),
             Self::Clone3(syscall) => syscall.fmt(f),
@@ -70,8 +90,12 @@ impl fmt::Display for Action {
             Self::Execve(syscall) => syscall.fmt(f),
             Self::Execveat(syscall) => syscall.fmt(f),
             Self::Exit(exit) => exit.fmt(f),
+            Self::Faccessat(syscall) => syscall.fmt(f),
+            Self::Faccessat2(syscall) => syscall.fmt(f),
             Self::Fchdir(syscall) => syscall.fmt(f),
             Self::Fork(syscall) => syscall.fmt(f),
+            Self::Link(syscall) => syscall.fmt(f),
+            Self::Linkat(syscall) => syscall.fmt(f),
             Self::Mkdir(syscall) => syscall.fmt(f),
             Self::Mkdirat(syscall) => syscall.fmt(f),
             Self::Open(syscall) => syscall.fmt(f),
@@ -80,19 +104,23 @@ impl fmt::Display for Action {
             Self::Renameat(syscall) => syscall.fmt(f),
             Self::Renameat2(syscall) => syscall.fmt(f),
             Self::Rmdir(syscall) => syscall.fmt(f),
+            Self::Symlink(syscall) => syscall.fmt(f),
+            Self::Symlinkat(syscall) => syscall.fmt(f),
+            Self::Unlink(syscall) => syscall.fmt(f),
+            Self::Unlinkat(syscall) => syscall.fmt(f),
             Self::Vfork(syscall) => syscall.fmt(f),
             Self::Generic(syscall) => syscall.fmt(f),
         }
     }
 }
 
-/// Parses a line as [`Display`](fmt::Display) writes it, dispatching to the
-/// matching call or [`Exit`] type; calls that no type parses fall back to
-/// [`Generic`].
 impl FromStr for Action {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, ParseError> {
+        if let Ok(syscall) = Access::from_str(s) {
+            return Ok(Self::Access(syscall));
+        }
         if let Ok(syscall) = Chdir::from_str(s) {
             return Ok(Self::Chdir(syscall));
         }
@@ -117,11 +145,23 @@ impl FromStr for Action {
         if let Ok(exit) = Exit::from_str(s) {
             return Ok(Self::Exit(exit));
         }
+        if let Ok(syscall) = Faccessat::from_str(s) {
+            return Ok(Self::Faccessat(syscall));
+        }
+        if let Ok(syscall) = Faccessat2::from_str(s) {
+            return Ok(Self::Faccessat2(syscall));
+        }
         if let Ok(syscall) = Fchdir::from_str(s) {
             return Ok(Self::Fchdir(syscall));
         }
         if let Ok(syscall) = Fork::from_str(s) {
             return Ok(Self::Fork(syscall));
+        }
+        if let Ok(syscall) = Link::from_str(s) {
+            return Ok(Self::Link(syscall));
+        }
+        if let Ok(syscall) = Linkat::from_str(s) {
+            return Ok(Self::Linkat(syscall));
         }
         if let Ok(syscall) = Mkdir::from_str(s) {
             return Ok(Self::Mkdir(syscall));
@@ -147,6 +187,18 @@ impl FromStr for Action {
         if let Ok(syscall) = Rmdir::from_str(s) {
             return Ok(Self::Rmdir(syscall));
         }
+        if let Ok(syscall) = Symlink::from_str(s) {
+            return Ok(Self::Symlink(syscall));
+        }
+        if let Ok(syscall) = Symlinkat::from_str(s) {
+            return Ok(Self::Symlinkat(syscall));
+        }
+        if let Ok(syscall) = Unlink::from_str(s) {
+            return Ok(Self::Unlink(syscall));
+        }
+        if let Ok(syscall) = Unlinkat::from_str(s) {
+            return Ok(Self::Unlinkat(syscall));
+        }
         if let Ok(syscall) = Vfork::from_str(s) {
             return Ok(Self::Vfork(syscall));
         }
@@ -160,6 +212,7 @@ mod tests {
 
     #[test]
     fn parse_variants() {
+        let is_access: fn(&Action) -> bool = |s| matches!(s, Action::Access(_));
         let is_chdir: fn(&Action) -> bool = |s| matches!(s, Action::Chdir(_));
         let is_clone: fn(&Action) -> bool = |s| matches!(s, Action::Clone(_));
         let is_clone3: fn(&Action) -> bool = |s| matches!(s, Action::Clone3(_));
@@ -168,8 +221,12 @@ mod tests {
         let is_execve: fn(&Action) -> bool = |s| matches!(s, Action::Execve(_));
         let is_execveat: fn(&Action) -> bool = |s| matches!(s, Action::Execveat(_));
         let is_exit: fn(&Action) -> bool = |s| matches!(s, Action::Exit(_));
+        let is_faccessat: fn(&Action) -> bool = |s| matches!(s, Action::Faccessat(_));
+        let is_faccessat2: fn(&Action) -> bool = |s| matches!(s, Action::Faccessat2(_));
         let is_fchdir: fn(&Action) -> bool = |s| matches!(s, Action::Fchdir(_));
         let is_fork: fn(&Action) -> bool = |s| matches!(s, Action::Fork(_));
+        let is_link: fn(&Action) -> bool = |s| matches!(s, Action::Link(_));
+        let is_linkat: fn(&Action) -> bool = |s| matches!(s, Action::Linkat(_));
         let is_mkdir: fn(&Action) -> bool = |s| matches!(s, Action::Mkdir(_));
         let is_mkdirat: fn(&Action) -> bool = |s| matches!(s, Action::Mkdirat(_));
         let is_open: fn(&Action) -> bool = |s| matches!(s, Action::Open(_));
@@ -178,9 +235,14 @@ mod tests {
         let is_renameat: fn(&Action) -> bool = |s| matches!(s, Action::Renameat(_));
         let is_renameat2: fn(&Action) -> bool = |s| matches!(s, Action::Renameat2(_));
         let is_rmdir: fn(&Action) -> bool = |s| matches!(s, Action::Rmdir(_));
+        let is_symlink: fn(&Action) -> bool = |s| matches!(s, Action::Symlink(_));
+        let is_symlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Symlinkat(_));
+        let is_unlink: fn(&Action) -> bool = |s| matches!(s, Action::Unlink(_));
+        let is_unlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Unlinkat(_));
         let is_vfork: fn(&Action) -> bool = |s| matches!(s, Action::Vfork(_));
         let is_generic: fn(&Action) -> bool = |s| matches!(s, Action::Generic(_));
         for (line, variant) in [
+            ("access(\"/f\", R_OK) = 0", is_access),
             ("chdir(\"/tmp\") = 0", is_chdir),
             (
                 "clone(child_stack=NULL, flags=CLONE_VM|SIGCHLD) = 1",
@@ -199,8 +261,15 @@ mod tests {
             ),
             ("+++ exited with 0 +++", is_exit),
             ("+++ killed by SIGKILL +++", is_exit),
+            ("faccessat(AT_FDCWD, \"/f\", F_OK) = 0", is_faccessat),
+            (
+                "faccessat2(AT_FDCWD, \"/f\", R_OK, AT_EACCESS) = 0",
+                is_faccessat2,
+            ),
             ("fchdir(0) = 0", is_fchdir),
             ("fork() = 123", is_fork),
+            ("link(\"/a\", \"/b\") = 0", is_link),
+            ("linkat(AT_FDCWD, \"a\", AT_FDCWD, \"b\", 0) = 0", is_linkat),
             ("mkdir(\"/tmp/dir\", 0755) = 0", is_mkdir),
             ("mkdirat(AT_FDCWD, \"/tmp/dir\", 0755) = 0", is_mkdirat),
             ("open(\"/tmp\", O_RDONLY) = 3", is_open),
@@ -215,6 +284,10 @@ mod tests {
                 is_renameat2,
             ),
             ("rmdir(\"/tmp/dir\") = 0", is_rmdir),
+            ("symlink(\"t\", \"l\") = 0", is_symlink),
+            ("symlinkat(\"t\", AT_FDCWD, \"l\") = 0", is_symlinkat),
+            ("unlink(\"/f\") = 0", is_unlink),
+            ("unlinkat(AT_FDCWD, \"/f\", 0) = 0", is_unlinkat),
             ("vfork() = 123", is_vfork),
             ("spill(0x1, 0x2) = 0", is_generic),
         ] {
@@ -238,10 +311,15 @@ mod tests {
     #[test]
     fn round_trip() {
         for line in [
+            "access(\"/f\", R_OK) = 0",
             "chdir(\"/tmp\") = 0",
             "close(3) = -1 EBADF",
             "open(\"/tmp/file\", O_WRONLY|O_CREAT|O_TRUNC, 0644) = 3",
             "execve(\"/bin/echo\", [\"echo\", \"hello\"], [\"PATH=/bin\"]) = 0",
+            "faccessat2(AT_FDCWD, \"/f\", R_OK, AT_EACCESS) = 0",
+            "unlinkat(AT_FDCWD, \"/f\", 0) = -1 ENOENT",
+            "symlinkat(\"t\", AT_FDCWD, \"l\") = -1 EEXIST",
+            "linkat(AT_FDCWD, \"a\", AT_FDCWD, \"b\", AT_SYMLINK_FOLLOW) = -1 EPERM",
             "clone3({flags=CLONE_VM, exit_signal=SIGCHLD}, 88) = -1 EPERM",
             "spill(0x1000, -7, \"a, b\") = 0",
             "+++ exited with 3 +++",

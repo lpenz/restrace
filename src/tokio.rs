@@ -19,6 +19,7 @@ use ::tokio::fs::File as TokioFile;
 use ::tokio::io::{AsyncBufReadExt, BufReader, Lines};
 use ::tokio::process::{Child, Command};
 use ::tokio_stream::Stream;
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::os::fd::FromRawFd;
 use std::pin::Pin;
@@ -38,7 +39,22 @@ use std::task::{Context, Poll};
 /// ready-made command that does so.
 #[must_use]
 pub fn under_strace(cmd: Command) -> Command {
-    crate::stdprocess::under_strace(cmd.into_std()).into()
+    under_strace_with(cmd, [] as [&OsStr; 0])
+}
+
+/// Like [`under_strace`], but inserts `extra` `strace` arguments between the
+/// base flags and the traced program.
+///
+/// This is the async counterpart of
+/// [`stdprocess::under_strace_with`](crate::stdprocess::under_strace_with);
+/// prefer [`under_strace`] unless you need the extra `strace` arguments.
+#[must_use]
+pub fn under_strace_with<I, S>(cmd: Command, extra: I) -> Command
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    crate::stdprocess::under_strace_with(cmd.into_std(), extra).into()
 }
 
 /// A stream of [`Event`]s read from a command running under `strace`.
@@ -103,6 +119,29 @@ impl Stream for EventStream {
 /// Returns an error if the trace pipe cannot be created or `strace` cannot be
 /// spawned.
 pub fn stream(cmd: Command) -> ::std::io::Result<EventStream> {
+    stream_with(cmd, [] as [&OsStr; 0])
+}
+
+/// Like [`stream`], but inserts `extra` `strace` arguments between the base
+/// flags and the traced program.
+///
+/// This is the async counterpart of
+/// [`stdprocess::stream_with`](crate::stdprocess::stream_with); prefer
+/// [`stream`] unless you need the extra `strace` arguments.
+///
+/// The internal `-o /dev/fd/3` is placed after `extra`, so it takes precedence
+/// over any output redirection in `extra` (such as `-o FILE`): the trace is
+/// always read from the dedicated pipe.
+///
+/// # Errors
+///
+/// Returns an error if the trace pipe cannot be created or `strace` cannot be
+/// spawned.
+pub fn stream_with<I, S>(cmd: Command, extra: I) -> ::std::io::Result<EventStream>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
     let mut fds = [0 as libc::c_int; 2];
     if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
         return Err(::std::io::Error::last_os_error());
@@ -120,8 +159,16 @@ pub fn stream(cmd: Command) -> ::std::io::Result<EventStream> {
         }
     }
     let trace_path = format!("/dev/fd/{TRACE_FD}");
-    let mut wrapped: Command =
-        crate::stdprocess::under_strace_with(cmd.into_std(), ["-o", trace_path.as_str()]).into();
+    // The output redirection goes last so that it takes precedence over any
+    // output selection in `extra`: `strace` keeps the last `-o`, and the trace
+    // must reach the pipe for the stream to yield events.
+    let mut args: Vec<OsString> = extra
+        .into_iter()
+        .map(|arg| arg.as_ref().to_os_string())
+        .collect();
+    args.push("-o".into());
+    args.push(trace_path.into());
+    let mut wrapped: Command = crate::stdprocess::under_strace_with(cmd.into_std(), args).into();
     unsafe {
         wrapped.pre_exec(move || {
             // Give strace its own descriptor for the trace output. If it was
@@ -184,6 +231,26 @@ mod tests {
     }
 
     #[test]
+    fn extra_args_injected() {
+        let mut cmd = Command::new("echo");
+        cmd.arg("hello");
+        let wrapped = under_strace_with(cmd, ["-e", "trace=openat"]).into_std();
+        assert_eq!(
+            wrapped.get_args().collect::<Vec<_>>(),
+            vec![
+                OsStr::new("--absolute-timestamps=format:unix,precision:us"),
+                OsStr::new("--follow-forks"),
+                OsStr::new("-a"),
+                OsStr::new("0"),
+                OsStr::new("-e"),
+                OsStr::new("trace=openat"),
+                OsStr::new("echo"),
+                OsStr::new("hello"),
+            ]
+        );
+    }
+
+    #[test]
     fn current_dir_and_env_copied() {
         let mut cmd = Command::new("pwd");
         cmd.current_dir("/tmp");
@@ -230,5 +297,54 @@ mod tests {
         lines.wait().await.expect("wait for strace");
         assert!(!collected.is_empty());
         assert!(collected.iter().map(|line| line.pid).all(|pid| pid > 0));
+    }
+
+    #[::tokio::test(crate = "::tokio")]
+    async fn stream_with_filters_syscalls() {
+        use ::tokio_stream::StreamExt;
+        if !strace_can_trace_forks() {
+            return;
+        }
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "true"]);
+        let mut lines = stream_with(cmd, ["-e", "trace=openat"]).expect("spawn strace");
+        let mut collected = Vec::new();
+        while let Some(line) = lines.next().await {
+            collected.push(line);
+        }
+        lines.wait().await.expect("wait for strace");
+        assert!(!collected.is_empty());
+        assert!(
+            collected.iter().all(|line| matches!(
+                line.action,
+                crate::Action::Openat(_) | crate::Action::Exit(_)
+            )),
+            "unexpected syscall with -e trace=openat: {collected:?}"
+        );
+    }
+
+    #[::tokio::test(crate = "::tokio")]
+    async fn stream_with_caller_output_still_streams() {
+        use ::tokio_stream::StreamExt;
+        if !strace_can_trace_forks() {
+            return;
+        }
+        // A caller-supplied `-o` must not steal the trace from the pipe: the
+        // internal redirection is placed last and wins, so the stream still
+        // yields the parsed events.
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "true"]);
+        let mut lines = stream_with(cmd, ["-o", "/dev/null"]).expect("spawn strace");
+        let mut collected = Vec::new();
+        while let Some(line) = lines.next().await {
+            collected.push(line);
+        }
+        lines.wait().await.expect("wait for strace");
+        assert!(!collected.is_empty(), "expected the trace over the pipe");
+        assert!(
+            collected
+                .iter()
+                .any(|line| matches!(line.action, crate::Action::Exit(_)))
+        );
     }
 }

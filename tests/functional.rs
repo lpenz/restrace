@@ -6,13 +6,14 @@
 //! trace with [`restrace::Event`].
 //!
 //! Traces are read through [`restrace::tokio::stream`], the same path used by
-//! the `restrace run` command: `strace --follow-forks -o /dev/fd/3` writes
+//! the `restrace run` command: `strace --follow-forks -a 0 -o /dev/fd/3` writes
 //! every line with a bare pid prefix, which [`restrace::Event`] parses
 //! into a mandatory pid.
 
 use ::tokio::process::Command as TokioCommand;
 use ::tokio_stream::StreamExt;
 use restrace::Event;
+use restrace::syscalls::{Errno, OkResult};
 use std::process::Command;
 
 /// Returns whether `strace` is available in this environment.
@@ -55,6 +56,13 @@ async fn trace(cmd: Command) -> Vec<Event> {
     collected
 }
 
+/// Like [`trace`], but runs a shell command line.
+async fn trace_shell(script: &str) -> Vec<Event> {
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", script]);
+    trace(cmd).await
+}
+
 #[::tokio::test]
 async fn traces_a_single_process() {
     if !strace_available() {
@@ -83,6 +91,81 @@ async fn traces_a_single_process() {
     assert!(
         lines.iter().all(|line| line.pid > 0),
         "expected a pid on every line: {lines:?}"
+    );
+}
+
+/// Runs a shell command line under `strace` and checks that the new
+/// file-operation syscalls parse from a real trace.
+///
+/// `strace` is started with `-a 0`, so a short call like `close(2)` has no
+/// column padding before its `=`, and it appends a parenthesized description
+/// to a failing `errno`. The dynamic loader's `access(2)` check on
+/// `/etc/ld.so.preload` covers the short call with an `ENOENT` description,
+/// and `ln`/`rm` cover the link/symlink/unlink types.
+#[::tokio::test]
+async fn parses_described_and_short_syscalls() {
+    if !strace_available() {
+        return;
+    }
+    let lines = trace_shell(
+        "d=$(mktemp -d); touch $d/a; ln $d/a $d/b; ln -s $d/a $d/c; \
+         rm $d/b $d/c $d/a; rmdir $d; test -r /nonexistent; rm $d/missing 2>/dev/null",
+    )
+    .await;
+
+    // The loader probes /etc/ld.so.preload with access(2); the call fails with
+    // ENOENT, so the line carries a description that must be stripped.
+    let access = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Access(access) => Some(access),
+            _ => None,
+        })
+        .expect("expected the loader's access(2) check");
+    assert_eq!(access.result, OkResult::Errno(Errno::ENOENT));
+
+    // `close(2)` is a short call; it must parse as a typed Close and not fall
+    // back to Generic.
+    assert!(
+        lines
+            .iter()
+            .any(|line| matches!(line.action, restrace::Action::Close(_))),
+        "expected a parsed close(2): {lines:?}"
+    );
+
+    // The file operations must parse as their dedicated types.
+    let has_link = lines.iter().any(|line| {
+        matches!(
+            line.action,
+            restrace::Action::Link(_) | restrace::Action::Linkat(_)
+        )
+    });
+    let has_symlink = lines.iter().any(|line| {
+        matches!(
+            line.action,
+            restrace::Action::Symlink(_) | restrace::Action::Symlinkat(_)
+        )
+    });
+    let has_unlink = lines.iter().any(|line| {
+        matches!(
+            line.action,
+            restrace::Action::Unlink(_) | restrace::Action::Unlinkat(_)
+        )
+    });
+    assert!(has_link, "expected a link/linkat call: {lines:?}");
+    assert!(has_symlink, "expected a symlink/symlinkat call: {lines:?}");
+    assert!(has_unlink, "expected an unlink/unlinkat call: {lines:?}");
+
+    // The failing `rm` reports an errno description on unlink; it must parse as
+    // the typed call with the errno stripped, not fall back to Generic.
+    let failed_unlink = lines.iter().any(|line| match &line.action {
+        restrace::Action::Unlink(unlink) => !unlink.result.is_ok(),
+        restrace::Action::Unlinkat(unlinkat) => !unlinkat.result.is_ok(),
+        _ => false,
+    });
+    assert!(
+        failed_unlink,
+        "expected a failing unlink/unlinkat with a stripped errno: {lines:?}"
     );
 }
 
