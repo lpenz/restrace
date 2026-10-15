@@ -21,11 +21,14 @@ use std::process::{Child, Command, ExitStatus};
 ///
 /// `-a 0` disables the column alignment of return values, so a call is always
 /// rendered as `name(...) = result` with a single space before the `=`.
-const STRACE_FLAGS: [&str; 4] = [
+/// `-v` stops `strace` from abbreviating structures and arrays, so that calls
+/// like `stat(2)` and `getdents(2)` carry their decoded fields.
+const STRACE_FLAGS: [&str; 5] = [
     "--absolute-timestamps=format:unix,precision:us",
     "--follow-forks",
     "-a",
     "0",
+    "-v",
 ];
 
 /// File descriptor strace writes its trace output to.
@@ -39,7 +42,7 @@ pub(crate) const TRACE_FD: libc::c_int = 3;
 /// arguments, but under `strace`.
 ///
 /// The returned command executes `strace --absolute-timestamps=format:unix,precision:us
-/// --follow-forks -a 0 <program> <args...>`.  The working directory and
+/// --follow-forks -a 0 -v <program> <args...>`.  The working directory and
 /// environment of `cmd` are copied over to the wrapped command.
 ///
 /// Note that [`crate::Event`] only parses lines that carry a pid.
@@ -244,6 +247,7 @@ mod tests {
                 OsStr::new("--follow-forks"),
                 OsStr::new("-a"),
                 OsStr::new("0"),
+                OsStr::new("-v"),
                 OsStr::new("echo"),
                 OsStr::new("hello"),
             ]
@@ -253,7 +257,7 @@ mod tests {
     #[test]
     fn no_args() {
         let wrapped = under_strace(Command::new("true"));
-        assert_eq!(wrapped.get_args().collect::<Vec<_>>().len(), 5);
+        assert_eq!(wrapped.get_args().collect::<Vec<_>>().len(), 6);
     }
 
     #[test]
@@ -268,6 +272,7 @@ mod tests {
                 OsStr::new("--follow-forks"),
                 OsStr::new("-a"),
                 OsStr::new("0"),
+                OsStr::new("-v"),
                 OsStr::new("-o"),
                 OsStr::new("/dev/fd/3"),
                 OsStr::new("echo"),
