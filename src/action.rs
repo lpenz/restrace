@@ -7,8 +7,9 @@
 use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Clone, Clone3, Close, Creat, Dup, Dup2, Dup3, Execve, Execveat, Faccessat,
-    Faccessat2, Fchdir, Fork, Generic, Link, Linkat, Mkdir, Mkdirat, Open, Openat, ParseError,
-    Pipe2, Rename, Renameat, Renameat2, Rmdir, Stat, Symlink, Symlinkat, Unlink, Unlinkat, Vfork,
+    Faccessat2, Fchdir, Fork, Generic, Link, Linkat, Lstat, Mkdir, Mkdirat, Newfstatat, Open,
+    Openat, ParseError, Pipe2, Rename, Renameat, Renameat2, Rmdir, Stat, Symlink, Symlinkat,
+    Unlink, Unlinkat, Vfork,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -54,10 +55,14 @@ pub enum Action {
     Link(Link),
     /// A `linkat(2)` call.
     Linkat(Linkat),
+    /// An `lstat(2)` call.
+    Lstat(Lstat),
     /// A `mkdir(2)` call.
     Mkdir(Mkdir),
     /// A `mkdirat(2)` call.
     Mkdirat(Mkdirat),
+    /// A `newfstatat(2)` call.
+    Newfstatat(Newfstatat),
     /// An `open(2)` call.
     Open(Open),
     /// An `openat(2)` call.
@@ -109,8 +114,10 @@ impl fmt::Display for Action {
             Self::Fork(syscall) => syscall.fmt(f),
             Self::Link(syscall) => syscall.fmt(f),
             Self::Linkat(syscall) => syscall.fmt(f),
+            Self::Lstat(syscall) => syscall.fmt(f),
             Self::Mkdir(syscall) => syscall.fmt(f),
             Self::Mkdirat(syscall) => syscall.fmt(f),
+            Self::Newfstatat(syscall) => syscall.fmt(f),
             Self::Open(syscall) => syscall.fmt(f),
             Self::Openat(syscall) => syscall.fmt(f),
             Self::Pipe2(syscall) => syscall.fmt(f),
@@ -187,11 +194,17 @@ impl FromStr for Action {
         if let Ok(syscall) = Linkat::from_str(s) {
             return Ok(Self::Linkat(syscall));
         }
+        if let Ok(syscall) = Lstat::from_str(s) {
+            return Ok(Self::Lstat(syscall));
+        }
         if let Ok(syscall) = Mkdir::from_str(s) {
             return Ok(Self::Mkdir(syscall));
         }
         if let Ok(syscall) = Mkdirat::from_str(s) {
             return Ok(Self::Mkdirat(syscall));
+        }
+        if let Ok(syscall) = Newfstatat::from_str(s) {
+            return Ok(Self::Newfstatat(syscall));
         }
         if let Ok(syscall) = Open::from_str(s) {
             return Ok(Self::Open(syscall));
@@ -260,8 +273,10 @@ mod tests {
         let is_fork: fn(&Action) -> bool = |s| matches!(s, Action::Fork(_));
         let is_link: fn(&Action) -> bool = |s| matches!(s, Action::Link(_));
         let is_linkat: fn(&Action) -> bool = |s| matches!(s, Action::Linkat(_));
+        let is_lstat: fn(&Action) -> bool = |s| matches!(s, Action::Lstat(_));
         let is_mkdir: fn(&Action) -> bool = |s| matches!(s, Action::Mkdir(_));
         let is_mkdirat: fn(&Action) -> bool = |s| matches!(s, Action::Mkdirat(_));
+        let is_newfstatat: fn(&Action) -> bool = |s| matches!(s, Action::Newfstatat(_));
         let is_open: fn(&Action) -> bool = |s| matches!(s, Action::Open(_));
         let is_openat: fn(&Action) -> bool = |s| matches!(s, Action::Openat(_));
         let is_pipe2: fn(&Action) -> bool = |s| matches!(s, Action::Pipe2(_));
@@ -308,8 +323,13 @@ mod tests {
             ("fork() = 123", is_fork),
             ("link(\"/a\", \"/b\") = 0", is_link),
             ("linkat(AT_FDCWD, \"a\", AT_FDCWD, \"b\", 0) = 0", is_linkat),
+            ("lstat(\"/f\", 0x1) = -1 ENOENT", is_lstat),
             ("mkdir(\"/tmp/dir\", 0755) = 0", is_mkdir),
             ("mkdirat(AT_FDCWD, \"/tmp/dir\", 0755) = 0", is_mkdirat),
+            (
+                "newfstatat(AT_FDCWD, \"/f\", 0x1, AT_SYMLINK_NOFOLLOW) = 0",
+                is_newfstatat,
+            ),
             ("open(\"/tmp\", O_RDONLY) = 3", is_open),
             ("openat(4, \"file\", O_RDONLY) = 3", is_openat),
             ("pipe2([3, 4], O_CLOEXEC) = 0", is_pipe2),

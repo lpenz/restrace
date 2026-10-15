@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Dup3Flags` argument type.
 - A typed `pipe2(2)` record, carried as the `Action::Pipe2` variant, with the
   `Pipe2Flags` argument type.
+- A typed `lstat(2)` record, carried as the `Action::Lstat` variant.
+- A typed `newfstatat(2)` record, carried as the `Action::Newfstatat` variant,
+  with the `NewfstatatFlags` argument type.
 - A typed `stat(2)` record, carried as the `Action::Stat` variant, with the
   `StatBuf`, `FileMode`, `Device` and `Buffer` argument types.
 
