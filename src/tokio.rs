@@ -30,7 +30,7 @@ use std::task::{Context, Poll};
 /// arguments, but under `strace`.
 ///
 /// The returned command executes `strace --absolute-timestamps=format:unix,precision:us
-/// --follow-forks -a 0 <program> <args...>`.  The working directory and
+/// --follow-forks -a 0 -v <program> <args...>`.  The working directory and
 /// environment of `cmd` are copied over to the wrapped command.
 ///
 /// Note that [`crate::Event`] only parses lines that carry a pid.
@@ -224,6 +224,7 @@ mod tests {
                 OsStr::new("--follow-forks"),
                 OsStr::new("-a"),
                 OsStr::new("0"),
+                OsStr::new("-v"),
                 OsStr::new("echo"),
                 OsStr::new("hello"),
             ]
@@ -242,6 +243,7 @@ mod tests {
                 OsStr::new("--follow-forks"),
                 OsStr::new("-a"),
                 OsStr::new("0"),
+                OsStr::new("-v"),
                 OsStr::new("-e"),
                 OsStr::new("trace=openat"),
                 OsStr::new("echo"),
