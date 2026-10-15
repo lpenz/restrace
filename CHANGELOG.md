@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `tokio::under_strace_with`, to run a command under `strace` with extra
   `strace` arguments while still reading and parsing the trace from a dedicated
   pipe.
+- A typed `dup(2)` record, carried as the `Action::Dup` variant.
 
 ### Fixed
 

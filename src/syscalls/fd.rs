@@ -2,15 +2,16 @@
 // This file is subject to the terms and conditions defined in
 // file 'LICENSE', which is part of this source code package.
 
-//! Return values of the system calls that open a file descriptor.
+//! Return values of the system calls that report a file descriptor.
 
 use super::errno::Errno;
 use super::parse::{self, ParseError};
 use std::fmt;
 use std::str::FromStr;
 
-/// The return value of a system call that opens a file descriptor,
-/// such as [`open(2)`](super::open::Open) or [`creat(2)`](super::creat::Creat).
+/// The return value of a system call that reports a file descriptor,
+/// such as [`open(2)`](super::open::Open), [`creat(2)`](super::creat::Creat)
+/// or [`dup(2)`](super::dup::Dup).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FdResult {
     /// The file descriptor that was opened.
