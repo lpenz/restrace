@@ -6,9 +6,9 @@
 
 use crate::exit::Exit;
 use crate::syscalls::{
-    Access, Chdir, Clone, Clone3, Close, Creat, Dup, Dup2, Execve, Execveat, Faccessat, Faccessat2,
-    Fchdir, Fork, Generic, Link, Linkat, Mkdir, Mkdirat, Open, Openat, ParseError, Rename,
-    Renameat, Renameat2, Rmdir, Symlink, Symlinkat, Unlink, Unlinkat, Vfork,
+    Access, Chdir, Clone, Clone3, Close, Creat, Dup, Dup2, Dup3, Execve, Execveat, Faccessat,
+    Faccessat2, Fchdir, Fork, Generic, Link, Linkat, Mkdir, Mkdirat, Open, Openat, ParseError,
+    Rename, Renameat, Renameat2, Rmdir, Symlink, Symlinkat, Unlink, Unlinkat, Vfork,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -34,6 +34,8 @@ pub enum Action {
     Dup(Dup),
     /// A `dup2(2)` call.
     Dup2(Dup2),
+    /// A `dup3(2)` call.
+    Dup3(Dup3),
     /// An `execve(2)` call.
     Execve(Execve),
     /// An `execveat(2)` call.
@@ -93,6 +95,7 @@ impl fmt::Display for Action {
             Self::Creat(syscall) => syscall.fmt(f),
             Self::Dup(syscall) => syscall.fmt(f),
             Self::Dup2(syscall) => syscall.fmt(f),
+            Self::Dup3(syscall) => syscall.fmt(f),
             Self::Execve(syscall) => syscall.fmt(f),
             Self::Execveat(syscall) => syscall.fmt(f),
             Self::Exit(exit) => exit.fmt(f),
@@ -147,6 +150,9 @@ impl FromStr for Action {
         }
         if let Ok(syscall) = Dup2::from_str(s) {
             return Ok(Self::Dup2(syscall));
+        }
+        if let Ok(syscall) = Dup3::from_str(s) {
+            return Ok(Self::Dup3(syscall));
         }
         if let Ok(syscall) = Execve::from_str(s) {
             return Ok(Self::Execve(syscall));
@@ -232,6 +238,7 @@ mod tests {
         let is_creat: fn(&Action) -> bool = |s| matches!(s, Action::Creat(_));
         let is_dup: fn(&Action) -> bool = |s| matches!(s, Action::Dup(_));
         let is_dup2: fn(&Action) -> bool = |s| matches!(s, Action::Dup2(_));
+        let is_dup3: fn(&Action) -> bool = |s| matches!(s, Action::Dup3(_));
         let is_execve: fn(&Action) -> bool = |s| matches!(s, Action::Execve(_));
         let is_execveat: fn(&Action) -> bool = |s| matches!(s, Action::Execveat(_));
         let is_exit: fn(&Action) -> bool = |s| matches!(s, Action::Exit(_));
@@ -270,6 +277,7 @@ mod tests {
             ("creat(\"/tmp/file\", 0644) = 3", is_creat),
             ("dup(0) = 3", is_dup),
             ("dup2(0, 3) = 3", is_dup2),
+            ("dup3(0, 4, O_CLOEXEC) = 4", is_dup3),
             ("execve(\"/bin/echo\", [\"echo\"], []) = 0", is_execve),
             (
                 "execveat(AT_FDCWD, \"prog\", [\"prog\"], [], 0) = 0",
@@ -332,6 +340,7 @@ mod tests {
             "close(3) = -1 EBADF",
             "dup(0) = 3",
             "dup2(1, 3) = 3",
+            "dup3(0, 4, O_CLOEXEC) = 4",
             "open(\"/tmp/file\", O_WRONLY|O_CREAT|O_TRUNC, 0644) = 3",
             "execve(\"/bin/echo\", [\"echo\", \"hello\"], [\"PATH=/bin\"]) = 0",
             "faccessat2(AT_FDCWD, \"/f\", R_OK, AT_EACCESS) = 0",
