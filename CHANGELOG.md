@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Run `strace` with `-a 0`, which stops it from aligning the `=` of a return
+  value to a column. Short calls such as `close(2)`, `access(2)`, `unlink(2)`,
+  `link(2)` and `symlink(2)` were previously dropped when their result was
+  padded away from the closing parenthesis.
+
 ## [0.2.0] - 2026-10-13
 
 ### Added
