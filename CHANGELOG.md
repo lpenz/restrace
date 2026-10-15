@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `strace` arguments while still reading and parsing the trace from a dedicated
   pipe.
 - A typed `dup(2)` record, carried as the `Action::Dup` variant.
+- A typed `dup2(2)` record, carried as the `Action::Dup2` variant.
 
 ### Fixed
 

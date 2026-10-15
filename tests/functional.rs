@@ -169,6 +169,23 @@ async fn parses_described_and_short_syscalls() {
     );
 }
 
+/// Runs a shell command line whose redirections make the shell `dup2(2)` the
+/// standard descriptors, and checks that the calls parse as `Action::Dup2`.
+#[::tokio::test]
+async fn parses_dup2() {
+    if !strace_available() {
+        return;
+    }
+    let lines = trace_shell("exec 3>&1; echo x >&3; exec 3>&-").await;
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| matches!(line.action, restrace::Action::Dup2(_))),
+        "expected a parsed dup2(2): {lines:?}"
+    );
+}
+
 #[::tokio::test]
 async fn exits_with_code() {
     if !strace_available() {
