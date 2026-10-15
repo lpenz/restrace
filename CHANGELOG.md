@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A typed `dup2(2)` record, carried as the `Action::Dup2` variant.
 - A typed `dup3(2)` record, carried as the `Action::Dup3` variant, with the
   `Dup3Flags` argument type.
+- A typed `pipe2(2)` record, carried as the `Action::Pipe2` variant, with the
+  `Pipe2Flags` argument type.
 
 ### Fixed
 

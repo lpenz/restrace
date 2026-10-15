@@ -8,7 +8,7 @@ use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Clone, Clone3, Close, Creat, Dup, Dup2, Dup3, Execve, Execveat, Faccessat,
     Faccessat2, Fchdir, Fork, Generic, Link, Linkat, Mkdir, Mkdirat, Open, Openat, ParseError,
-    Rename, Renameat, Renameat2, Rmdir, Symlink, Symlinkat, Unlink, Unlinkat, Vfork,
+    Pipe2, Rename, Renameat, Renameat2, Rmdir, Symlink, Symlinkat, Unlink, Unlinkat, Vfork,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -62,6 +62,8 @@ pub enum Action {
     Open(Open),
     /// An `openat(2)` call.
     Openat(Openat),
+    /// A `pipe2(2)` call.
+    Pipe2(Pipe2),
     /// A `rename(2)` call.
     Rename(Rename),
     /// A `renameat(2)` call.
@@ -109,6 +111,7 @@ impl fmt::Display for Action {
             Self::Mkdirat(syscall) => syscall.fmt(f),
             Self::Open(syscall) => syscall.fmt(f),
             Self::Openat(syscall) => syscall.fmt(f),
+            Self::Pipe2(syscall) => syscall.fmt(f),
             Self::Rename(syscall) => syscall.fmt(f),
             Self::Renameat(syscall) => syscall.fmt(f),
             Self::Renameat2(syscall) => syscall.fmt(f),
@@ -193,6 +196,9 @@ impl FromStr for Action {
         if let Ok(syscall) = Openat::from_str(s) {
             return Ok(Self::Openat(syscall));
         }
+        if let Ok(syscall) = Pipe2::from_str(s) {
+            return Ok(Self::Pipe2(syscall));
+        }
         if let Ok(syscall) = Rename::from_str(s) {
             return Ok(Self::Rename(syscall));
         }
@@ -252,6 +258,7 @@ mod tests {
         let is_mkdirat: fn(&Action) -> bool = |s| matches!(s, Action::Mkdirat(_));
         let is_open: fn(&Action) -> bool = |s| matches!(s, Action::Open(_));
         let is_openat: fn(&Action) -> bool = |s| matches!(s, Action::Openat(_));
+        let is_pipe2: fn(&Action) -> bool = |s| matches!(s, Action::Pipe2(_));
         let is_rename: fn(&Action) -> bool = |s| matches!(s, Action::Rename(_));
         let is_renameat: fn(&Action) -> bool = |s| matches!(s, Action::Renameat(_));
         let is_renameat2: fn(&Action) -> bool = |s| matches!(s, Action::Renameat2(_));
@@ -298,6 +305,7 @@ mod tests {
             ("mkdirat(AT_FDCWD, \"/tmp/dir\", 0755) = 0", is_mkdirat),
             ("open(\"/tmp\", O_RDONLY) = 3", is_open),
             ("openat(4, \"file\", O_RDONLY) = 3", is_openat),
+            ("pipe2([3, 4], O_CLOEXEC) = 0", is_pipe2),
             ("rename(\"/a\", \"/b\") = 0", is_rename),
             (
                 "renameat(AT_FDCWD, \"a\", AT_FDCWD, \"b\") = 0",
@@ -342,6 +350,7 @@ mod tests {
             "dup2(1, 3) = 3",
             "dup3(0, 4, O_CLOEXEC) = 4",
             "open(\"/tmp/file\", O_WRONLY|O_CREAT|O_TRUNC, 0644) = 3",
+            "pipe2([3, 4], O_CLOEXEC) = 0",
             "execve(\"/bin/echo\", [\"echo\", \"hello\"], [\"PATH=/bin\"]) = 0",
             "faccessat2(AT_FDCWD, \"/f\", R_OK, AT_EACCESS) = 0",
             "unlinkat(AT_FDCWD, \"/f\", 0) = -1 ENOENT",

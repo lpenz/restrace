@@ -186,6 +186,23 @@ async fn parses_dup2() {
     );
 }
 
+/// Runs a shell command line whose command substitution makes the shell create
+/// a `pipe2(2)`, and checks that the call parses as `Action::Pipe2`.
+#[::tokio::test]
+async fn parses_pipe2() {
+    if !strace_available() {
+        return;
+    }
+    let lines = trace_shell("x=$(echo hi); echo $x").await;
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| matches!(line.action, restrace::Action::Pipe2(_))),
+        "expected a parsed pipe2(2): {lines:?}"
+    );
+}
+
 #[::tokio::test]
 async fn exits_with_code() {
     if !strace_available() {
