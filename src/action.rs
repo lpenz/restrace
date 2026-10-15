@@ -8,7 +8,7 @@ use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Clone, Clone3, Close, Creat, Dup, Dup2, Dup3, Execve, Execveat, Faccessat,
     Faccessat2, Fchdir, Fork, Generic, Link, Linkat, Mkdir, Mkdirat, Open, Openat, ParseError,
-    Pipe2, Rename, Renameat, Renameat2, Rmdir, Symlink, Symlinkat, Unlink, Unlinkat, Vfork,
+    Pipe2, Rename, Renameat, Renameat2, Rmdir, Stat, Symlink, Symlinkat, Unlink, Unlinkat, Vfork,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -72,6 +72,8 @@ pub enum Action {
     Renameat2(Renameat2),
     /// An `rmdir(2)` call.
     Rmdir(Rmdir),
+    /// A `stat(2)` call.
+    Stat(Stat),
     /// A `symlink(2)` call.
     Symlink(Symlink),
     /// A `symlinkat(2)` call.
@@ -116,6 +118,7 @@ impl fmt::Display for Action {
             Self::Renameat(syscall) => syscall.fmt(f),
             Self::Renameat2(syscall) => syscall.fmt(f),
             Self::Rmdir(syscall) => syscall.fmt(f),
+            Self::Stat(syscall) => syscall.fmt(f),
             Self::Symlink(syscall) => syscall.fmt(f),
             Self::Symlinkat(syscall) => syscall.fmt(f),
             Self::Unlink(syscall) => syscall.fmt(f),
@@ -211,6 +214,9 @@ impl FromStr for Action {
         if let Ok(syscall) = Rmdir::from_str(s) {
             return Ok(Self::Rmdir(syscall));
         }
+        if let Ok(syscall) = Stat::from_str(s) {
+            return Ok(Self::Stat(syscall));
+        }
         if let Ok(syscall) = Symlink::from_str(s) {
             return Ok(Self::Symlink(syscall));
         }
@@ -263,6 +269,7 @@ mod tests {
         let is_renameat: fn(&Action) -> bool = |s| matches!(s, Action::Renameat(_));
         let is_renameat2: fn(&Action) -> bool = |s| matches!(s, Action::Renameat2(_));
         let is_rmdir: fn(&Action) -> bool = |s| matches!(s, Action::Rmdir(_));
+        let is_stat: fn(&Action) -> bool = |s| matches!(s, Action::Stat(_));
         let is_symlink: fn(&Action) -> bool = |s| matches!(s, Action::Symlink(_));
         let is_symlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Symlinkat(_));
         let is_unlink: fn(&Action) -> bool = |s| matches!(s, Action::Unlink(_));
@@ -316,6 +323,7 @@ mod tests {
                 is_renameat2,
             ),
             ("rmdir(\"/tmp/dir\") = 0", is_rmdir),
+            ("stat(\"/etc/hostname\", 0x7ffd684fe7b0) = 0", is_stat),
             ("symlink(\"t\", \"l\") = 0", is_symlink),
             ("symlinkat(\"t\", AT_FDCWD, \"l\") = 0", is_symlinkat),
             ("unlink(\"/f\") = 0", is_unlink),
@@ -357,6 +365,7 @@ mod tests {
             "symlinkat(\"t\", AT_FDCWD, \"l\") = -1 EEXIST",
             "linkat(AT_FDCWD, \"a\", AT_FDCWD, \"b\", AT_SYMLINK_FOLLOW) = -1 EPERM",
             "clone3({flags=CLONE_VM, exit_signal=SIGCHLD}, 88) = -1 EPERM",
+            "stat(\"/etc/hostname\", 0x7ffd684fe7b0) = 0",
             "spill(0x1000, -7, \"a, b\") = 0",
             "+++ exited with 3 +++",
             "+++ killed by SIGSEGV (core dumped) +++",
