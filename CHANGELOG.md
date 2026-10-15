@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Run `strace` with `-v`, which stops it from abbreviating structures and
+  arrays. Calls that carry a decoded buffer, such as `stat(2)` and
+  `getdents(2)`, are now complete instead of ending in `...`.
 - Run `strace` with `-a 0`, which stops it from aligning the `=` of a return
   value to a column. Short calls such as `close(2)`, `access(2)`, `unlink(2)`,
   `link(2)` and `symlink(2)` were previously dropped when their result was
