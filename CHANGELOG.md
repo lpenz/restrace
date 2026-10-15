@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value to a column. Short calls such as `close(2)`, `access(2)`, `unlink(2)`,
   `link(2)` and `symlink(2)` were previously dropped when their result was
   padded away from the closing parenthesis.
+- Parse a failing call whose errno carries the parenthesized description
+  `strace` appends, such as `= -1 ENOENT (No such file or directory)`.
 
 ## [0.2.0] - 2026-10-13
 

@@ -130,7 +130,7 @@ impl FromStr for Ret {
         let s = s.trim();
         let error = || ParseError::new("return value", s);
         if let Some(errno) = s.strip_prefix("-1 ") {
-            return Errno::from_str(errno.trim())
+            return Errno::from_str(parse::strip_description(errno.trim()))
                 .map(Self::Errno)
                 .map_err(|_| error());
         }
@@ -296,6 +296,13 @@ mod tests {
         let syscall = Generic::from_str("mystery() = 3").unwrap();
         assert!(syscall.args.is_empty());
         assert_eq!(syscall.result, Ret::Value(3));
+    }
+
+    #[test]
+    fn parse_errno_description() {
+        let syscall =
+            Generic::from_str("mystery(0x1) = -1 ENOENT (No such file or directory)").unwrap();
+        assert_eq!(syscall.result, Ret::Errno(Errno::ENOENT));
     }
 
     #[test]

@@ -148,6 +148,15 @@ pub(crate) fn unquote(input: &str, part: &'static str) -> Result<String, ParseEr
     Ok(out)
 }
 
+/// Removes the parenthesized description `strace` appends to an errno, such as
+/// the ` (No such file or directory)` in `ENOENT (No such file or directory)`.
+pub(crate) fn strip_description(input: &str) -> &str {
+    match input.find(" (") {
+        Some(i) => input[..i].trim_end(),
+        None => input,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,5 +228,22 @@ mod tests {
         let err = ParseError::new("flags", "O_BOGUS");
         assert_eq!(err.to_string(), r#"invalid flags: "O_BOGUS""#);
         assert_eq!(err.part(), "flags");
+    }
+
+    #[test]
+    fn strip_description_removes_suffix() {
+        assert_eq!(
+            strip_description("ENOENT (No such file or directory)"),
+            "ENOENT"
+        );
+        assert_eq!(strip_description("EACCES (Permission denied)"), "EACCES");
+        assert_eq!(strip_description("9999 (Unknown error)"), "9999");
+    }
+
+    #[test]
+    fn strip_description_keeps_plain() {
+        assert_eq!(strip_description("ENOENT"), "ENOENT");
+        assert_eq!(strip_description("5"), "5");
+        assert_eq!(strip_description(""), "");
     }
 }

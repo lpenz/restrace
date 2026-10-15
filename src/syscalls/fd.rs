@@ -5,7 +5,7 @@
 //! Return values of the system calls that open a file descriptor.
 
 use super::errno::Errno;
-use super::parse::ParseError;
+use super::parse::{self, ParseError};
 use std::fmt;
 use std::str::FromStr;
 
@@ -61,7 +61,7 @@ impl FromStr for FdResult {
         let error = || ParseError::new("return value", s);
         if let Some(errno) = s.strip_prefix("-1 ") {
             return Ok(Self::Errno(
-                Errno::from_str(errno.trim()).map_err(|_| error())?,
+                Errno::from_str(parse::strip_description(errno.trim())).map_err(|_| error())?,
             ));
         }
         if s == "-1" {
@@ -104,6 +104,10 @@ mod tests {
         assert_eq!(
             FdResult::from_str("-1 9999"),
             Ok(FdResult::Errno(Errno(9999)))
+        );
+        assert_eq!(
+            FdResult::from_str("-1 ENOENT (No such file or directory)"),
+            Ok(FdResult::Errno(Errno::ENOENT))
         );
         assert!(FdResult::from_str("-1").is_err());
         assert!(FdResult::from_str("x").is_err());

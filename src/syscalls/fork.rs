@@ -6,7 +6,7 @@
 //!
 //! [man7]: https://man7.org/linux/man-pages/man2/fork.2.html
 
-use super::parse::ParseError;
+use super::parse::{self, ParseError};
 use std::fmt;
 use std::str::FromStr;
 
@@ -97,7 +97,8 @@ impl FromStr for ForkResult {
         let error = || ParseError::new("return value", s);
         if let Some(errno) = s.strip_prefix("-1 ") {
             return Ok(Self::Errno(
-                crate::syscalls::errno::Errno::from_str(errno.trim()).map_err(|_| error())?,
+                crate::syscalls::errno::Errno::from_str(parse::strip_description(errno.trim()))
+                    .map_err(|_| error())?,
             ));
         }
         if s == "-1" {
@@ -136,6 +137,10 @@ mod tests {
         assert_eq!(
             Fork::from_str("fork() = -1 ENOMEM").unwrap(),
             Fork::from_raw(-12)
+        );
+        assert_eq!(
+            Fork::from_str("fork() = -1 EAGAIN (Resource temporarily unavailable)").unwrap(),
+            Fork::from_raw(-11)
         );
         assert!(Fork::from_str("fork(1) = 1").is_err());
         assert!(Fork::from_str("clone(...) = 1").is_err());

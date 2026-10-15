@@ -5,7 +5,7 @@
 //! Return values of the system calls that report success as zero.
 
 use super::errno::Errno;
-use super::parse::ParseError;
+use super::parse::{self, ParseError};
 use std::fmt;
 use std::str::FromStr;
 
@@ -60,7 +60,7 @@ impl FromStr for OkResult {
         let error = || ParseError::new("return value", s);
         if let Some(errno) = s.strip_prefix("-1 ") {
             return Ok(Self::Errno(
-                Errno::from_str(errno.trim()).map_err(|_| error())?,
+                Errno::from_str(parse::strip_description(errno.trim())).map_err(|_| error())?,
             ));
         }
         if s == "0" {
@@ -92,6 +92,14 @@ mod tests {
         );
         assert_eq!(
             OkResult::from_str("-1 9999"),
+            Ok(OkResult::Errno(Errno(9999)))
+        );
+        assert_eq!(
+            OkResult::from_str("-1 ENOENT (No such file or directory)"),
+            Ok(OkResult::Errno(Errno::ENOENT))
+        );
+        assert_eq!(
+            OkResult::from_str("-1 9999 (something)"),
             Ok(OkResult::Errno(Errno(9999)))
         );
         assert!(OkResult::from_str("1").is_err());
