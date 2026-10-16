@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `StatBuf`, `FileMode`, `Device` and `Buffer` argument types.
 - A typed `readlink(2)` record, carried as the `Action::Readlink` variant, with
   the `Quoted` buffer-value type.
+- A typed `readlinkat(2)` record, carried as the `Action::Readlinkat` variant.
 
 ### Fixed
 
