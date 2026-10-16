@@ -138,7 +138,7 @@ impl LinkatFlags {
 
 impl fmt::Display for LinkatFlags {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        flags::display(f, self.0, NAMED_FLAGS)
+        flags::display(f, self.0, NAMED_FLAGS, "AT_???")
     }
 }
 

@@ -37,7 +37,7 @@ impl ResolveFlags {
 
 impl fmt::Display for ResolveFlags {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        flags::display(f, self.0, RESOLVE_NAMES)
+        flags::display(f, self.0, RESOLVE_NAMES, "RESOLVE_???")
     }
 }
 

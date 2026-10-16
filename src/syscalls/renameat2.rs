@@ -7,6 +7,7 @@
 //! [man7]: https://man7.org/linux/man-pages/man2/renameat2.2.html
 
 use super::dirfd::DirFd;
+use super::flags;
 use super::parse::{self, ParseError};
 use super::result::OkResult;
 use std::ffi::CString;
@@ -77,35 +78,15 @@ impl Not for Renameat2Flags {
     }
 }
 
-const RENAMEAT2_FLAGS: &[(Renameat2Flags, &str)] = &[
-    (Renameat2Flags::RENAME_NOREPLACE, "RENAME_NOREPLACE"),
-    (Renameat2Flags::RENAME_EXCHANGE, "RENAME_EXCHANGE"),
-    (Renameat2Flags::RENAME_WHITEOUT, "RENAME_WHITEOUT"),
+const RENAMEAT2_FLAGS: &[(u32, &str)] = &[
+    (Renameat2Flags::RENAME_NOREPLACE.0, "RENAME_NOREPLACE"),
+    (Renameat2Flags::RENAME_EXCHANGE.0, "RENAME_EXCHANGE"),
+    (Renameat2Flags::RENAME_WHITEOUT.0, "RENAME_WHITEOUT"),
 ];
 
 impl fmt::Display for Renameat2Flags {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut first = true;
-        let mut write_part = |part: &str| -> fmt::Result {
-            if !first {
-                f.write_str("|")?;
-            }
-            first = false;
-            f.write_str(part)
-        };
-        if self.0 == 0 {
-            return f.write_str("0");
-        }
-        for (flag, name) in RENAMEAT2_FLAGS {
-            if self.contains(*flag) {
-                write_part(name)?;
-            }
-        }
-        let unknown = self.unknown_bits();
-        if unknown != 0 {
-            write_part(&format!("0x{unknown:x}"))?;
-        }
-        Ok(())
+        flags::display(f, self.0, RENAMEAT2_FLAGS, "RENAME_???")
     }
 }
 
@@ -115,37 +96,7 @@ impl FromStr for Renameat2Flags {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, ParseError> {
-        let s = s.trim();
-        if s.is_empty() {
-            return Err(ParseError::new("flags", s));
-        }
-        if s == "0" {
-            return Ok(Self::default());
-        }
-        let mut flags = Self::default();
-        for token in s.split('|') {
-            let token = token.trim();
-            let named = RENAMEAT2_FLAGS
-                .iter()
-                .find(|&&(_, name)| name == token)
-                .map(|&(flag, _)| flag);
-            match named {
-                Some(flag) => flags |= flag,
-                None if token.starts_with("0x") || token.starts_with("0X") => {
-                    let hex = token.trim_start_matches("0x").trim_start_matches("0X");
-                    let val = u32::from_str_radix(hex, 16)
-                        .map_err(|_| ParseError::new("flags", token))?;
-                    flags |= Self(val);
-                }
-                None => {
-                    let val = token
-                        .parse::<u32>()
-                        .map_err(|_| ParseError::new("flags", token))?;
-                    flags |= Self(val);
-                }
-            }
-        }
-        Ok(flags)
+        Ok(Self(flags::parse(s, RENAMEAT2_FLAGS, "flags")?))
     }
 }
 
@@ -261,7 +212,7 @@ mod tests {
             (Renameat2Flags::RENAME_NOREPLACE | Renameat2Flags::RENAME_EXCHANGE).to_string(),
             "RENAME_NOREPLACE|RENAME_EXCHANGE"
         );
-        assert_eq!(Renameat2Flags(0x100).to_string(), "0x100");
+        assert_eq!(Renameat2Flags(0x100).to_string(), "0x100 /* RENAME_??? */");
         assert_eq!(
             (Renameat2Flags::RENAME_WHITEOUT | Renameat2Flags(0x8)).to_string(),
             "RENAME_WHITEOUT|0x8"

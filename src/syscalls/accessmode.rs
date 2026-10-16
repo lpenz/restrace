@@ -42,7 +42,7 @@ impl fmt::Display for AccessMode {
         if self.0 == Self::F_OK.0 {
             return f.write_str("F_OK");
         }
-        flags::display(f, u32::from(self.0), NAMED)
+        flags::display(f, u32::from(self.0), NAMED, "?_OK")
     }
 }
 

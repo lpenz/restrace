@@ -124,7 +124,7 @@ impl Pipe2Flags {
 
 impl fmt::Display for Pipe2Flags {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        flags::display(f, self.0, NAMED_FLAGS)
+        flags::display(f, self.0, NAMED_FLAGS, "O_???")
     }
 }
 

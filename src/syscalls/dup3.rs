@@ -99,7 +99,7 @@ impl Dup3Flags {
 
 impl fmt::Display for Dup3Flags {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        flags::display(f, self.0, NAMED_FLAGS)
+        flags::display(f, self.0, NAMED_FLAGS, "O_???")
     }
 }
 

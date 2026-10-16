@@ -114,7 +114,7 @@ pub struct NewfstatatFlags(pub u32);
 
 impl fmt::Display for NewfstatatFlags {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        flags::display(f, self.0, NAMES)
+        flags::display(f, self.0, NAMES, "AT_???")
     }
 }
 
