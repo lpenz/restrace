@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the `NewfstatatFlags` argument type.
 - A typed `stat(2)` record, carried as the `Action::Stat` variant, with the
   `StatBuf`, `FileMode`, `Device` and `Buffer` argument types.
+- A typed `readlink(2)` record, carried as the `Action::Readlink` variant, with
+  the `Quoted` buffer-value type.
 
 ### Fixed
 

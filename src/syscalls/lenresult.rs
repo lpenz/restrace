@@ -10,8 +10,8 @@ use std::fmt;
 use std::str::FromStr;
 
 /// The return value of a system call that reports how many bytes it wrote to
-/// a buffer, such as [`getdents(2)`](super::getdents::Getdents), `readlink(2)`
-/// and `readlinkat(2)`.
+/// a buffer, such as [`getdents(2)`](super::getdents::Getdents) and
+/// [`readlink(2)`](super::readlink::Readlink).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LenResult {
     /// The call succeeded; it returned this many bytes.
