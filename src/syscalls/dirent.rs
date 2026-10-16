@@ -128,6 +128,54 @@ impl FromStr for Dirent {
     }
 }
 
+/// A directory entry as read by
+/// [`getdents64(2)`](super::getdents64::Getdents64).
+///
+/// It carries the same fields as [`Dirent`]; the two differ in the order
+/// `strace` prints them in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dirent64 {
+    /// Inode number (`d_ino`).
+    pub ino: u64,
+    /// Offset of the next entry (`d_off`).
+    pub off: u64,
+    /// Length of this record (`d_reclen`).
+    pub reclen: u64,
+    /// Entry type (`d_type`).
+    pub dtype: DirentType,
+    /// Entry name (`d_name`), without the terminating NUL byte.
+    pub name: CString,
+}
+
+impl fmt::Display for Dirent64 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{{d_ino={}, d_off={}, d_reclen={}, d_type={}, d_name={:?}}}",
+            self.ino,
+            self.off,
+            self.reclen,
+            self.dtype,
+            self.name.to_string_lossy()
+        )
+    }
+}
+
+impl FromStr for Dirent64 {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, ParseError> {
+        let (ino, off, reclen, name, dtype) = parse_fields(s)?;
+        Ok(Self {
+            ino,
+            off,
+            reclen,
+            dtype,
+            name,
+        })
+    }
+}
+
 /// Parses the common fields of a `{...}` directory entry, in any order.
 fn parse_fields(s: &str) -> Result<(u64, u64, u64, CString, DirentType), ParseError> {
     let s = s.trim();
@@ -224,6 +272,12 @@ impl BufferValue for DirentList<Dirent> {
     }
 }
 
+impl BufferValue for DirentList<Dirent64> {
+    fn decode_buffer(input: &str) -> Result<Self, ParseError> {
+        decode_list(input).map(Self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,11 +292,29 @@ mod tests {
         }
     }
 
+    fn dirent64() -> Dirent64 {
+        Dirent64 {
+            ino: 54,
+            off: 1,
+            reclen: 24,
+            dtype: DirentType::REG,
+            name: CString::new("hostname").unwrap(),
+        }
+    }
+
     #[test]
     fn display_dirent() {
         assert_eq!(
             dirent().to_string(),
             "{d_ino=54, d_off=1, d_reclen=24, d_name=\".\", d_type=DT_DIR}"
+        );
+    }
+
+    #[test]
+    fn display_dirent64() {
+        assert_eq!(
+            dirent64().to_string(),
+            "{d_ino=54, d_off=1, d_reclen=24, d_type=DT_REG, d_name=\"hostname\"}"
         );
     }
 
@@ -272,6 +344,15 @@ mod tests {
             Dirent::from_str("{d_ino=54, d_off=1, d_reclen=24, d_name=\".\", d_type=DT_DIR}")
                 .unwrap();
         assert_eq!(dirent, self::dirent());
+    }
+
+    #[test]
+    fn parse_dirent64() {
+        let dirent = Dirent64::from_str(
+            "{d_ino=54, d_off=1, d_reclen=24, d_type=DT_REG, d_name=\"hostname\"}",
+        )
+        .unwrap();
+        assert_eq!(dirent, dirent64());
     }
 
     #[test]
@@ -306,6 +387,12 @@ mod tests {
             "{d_ino=1, d_off=0, d_reclen=24, d_name=\"x\", d_type=DT_???}",
         ] {
             assert_eq!(Dirent::from_str(line).unwrap().to_string(), line);
+        }
+        for line in [
+            "{d_ino=54, d_off=1, d_reclen=24, d_type=DT_REG, d_name=\"hostname\"}",
+            "{d_ino=1, d_off=0, d_reclen=24, d_type=DT_???, d_name=\"x\"}",
+        ] {
+            assert_eq!(Dirent64::from_str(line).unwrap().to_string(), line);
         }
         let list = DirentList(vec![
             dirent(),
