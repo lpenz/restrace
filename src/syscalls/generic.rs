@@ -30,6 +30,8 @@ pub enum Arg {
     Str(CString),
     /// An array of arguments, printed bracket-delimited and comma-separated.
     Array(Vec<Arg>),
+    /// A raw argument value printed verbatim.
+    Raw(String),
 }
 
 impl fmt::Display for Arg {
@@ -49,6 +51,7 @@ impl fmt::Display for Arg {
                 }
                 f.write_str("]")
             }
+            Self::Raw(value) => f.write_str(value),
         }
     }
 }
@@ -67,24 +70,32 @@ impl FromStr for Arg {
             return CString::new(value).map(Self::Str).map_err(|_| error());
         }
         if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-            return u64::from_str_radix(hex, 16)
-                .map(Self::Hex)
-                .map_err(|_| error());
+            if let Ok(v) = u64::from_str_radix(hex, 16) {
+                return Ok(Self::Hex(v));
+            }
+            return Ok(Self::Raw(s.to_string()));
         }
         if s.starts_with('-') {
-            return s.parse::<i64>().map(Self::Signed).map_err(|_| error());
+            if let Ok(v) = s.parse::<i64>() {
+                return Ok(Self::Signed(v));
+            }
+            return Ok(Self::Raw(s.to_string()));
         }
         if let Some(body) = s.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
             if body.trim().is_empty() {
                 return Ok(Self::Array(Vec::new()));
             }
-            let values = parse::split_args_nested(body)
-                .into_iter()
-                .map(|part| Self::from_str(part.trim()))
-                .collect::<Result<_, _>>()?;
+            let parts = parse::split_args_nested(body);
+            let mut values = Vec::with_capacity(parts.len());
+            for part in parts {
+                values.push(Self::from_str(part.trim())?);
+            }
             return Ok(Self::Array(values));
         }
-        s.parse::<u64>().map(Self::Unsigned).map_err(|_| error())
+        if let Ok(v) = s.parse::<u64>() {
+            return Ok(Self::Unsigned(v));
+        }
+        Ok(Self::Raw(s.to_string()))
     }
 }
 
@@ -265,9 +276,9 @@ mod tests {
             ]))
         );
         assert_eq!(Arg::from_str("[]"), Ok(Arg::Array(Vec::new())));
-        assert!(Arg::from_str("").is_err());
-        assert!(Arg::from_str("0xzz").is_err());
-        assert!(Arg::from_str("null").is_err());
+        assert_eq!(Arg::from_str("").unwrap(), Arg::Raw("".to_string()));
+        assert_eq!(Arg::from_str("0xzz").unwrap(), Arg::Raw("0xzz".to_string()));
+        assert_eq!(Arg::from_str("null").unwrap(), Arg::Raw("null".to_string()));
     }
 
     #[test]
@@ -311,7 +322,8 @@ mod tests {
         assert!(Generic::from_str("mystery 0x1) = 0").is_err());
         assert!(Generic::from_str("(0x1) = 0").is_err());
         assert!(Generic::from_str("my stery(0x1) = 0").is_err());
-        assert!(Generic::from_str("mystery(0xzz) = 0").is_err());
+        let g = Generic::from_str("mystery(0xzz) = 0").unwrap();
+        assert_eq!(g.args[0], Arg::Raw("0xzz".to_string()));
         assert!(Generic::from_str("").is_err());
     }
 
