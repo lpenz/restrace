@@ -7,9 +7,9 @@
 use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Clone, Clone3, Close, Creat, Dup, Dup2, Dup3, Execve, Execveat, Faccessat,
-    Faccessat2, Fchdir, Fork, Fstat, Generic, Link, Linkat, Lstat, Mkdir, Mkdirat, Newfstatat,
-    Open, Openat, ParseError, Pipe2, Rename, Renameat, Renameat2, Rmdir, Stat, Symlink, Symlinkat,
-    Unlink, Unlinkat, Vfork,
+    Faccessat2, Fchdir, Fork, Fstat, Generic, Getdents, Link, Linkat, Lstat, Mkdir, Mkdirat,
+    Newfstatat, Open, Openat, ParseError, Pipe2, Rename, Renameat, Renameat2, Rmdir, Stat, Symlink,
+    Symlinkat, Unlink, Unlinkat, Vfork,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -53,6 +53,8 @@ pub enum Action {
     Fork(Fork),
     /// An `fstat(2)` call.
     Fstat(Fstat),
+    /// A `getdents(2)` call.
+    Getdents(Getdents),
     /// A `link(2)` call.
     Link(Link),
     /// A `linkat(2)` call.
@@ -115,6 +117,7 @@ impl fmt::Display for Action {
             Self::Fchdir(syscall) => syscall.fmt(f),
             Self::Fork(syscall) => syscall.fmt(f),
             Self::Fstat(syscall) => syscall.fmt(f),
+            Self::Getdents(syscall) => syscall.fmt(f),
             Self::Link(syscall) => syscall.fmt(f),
             Self::Linkat(syscall) => syscall.fmt(f),
             Self::Lstat(syscall) => syscall.fmt(f),
@@ -193,6 +196,9 @@ impl FromStr for Action {
         }
         if let Ok(syscall) = Fstat::from_str(s) {
             return Ok(Self::Fstat(syscall));
+        }
+        if let Ok(syscall) = Getdents::from_str(s) {
+            return Ok(Self::Getdents(syscall));
         }
         if let Ok(syscall) = Link::from_str(s) {
             return Ok(Self::Link(syscall));
@@ -278,6 +284,7 @@ mod tests {
         let is_fchdir: fn(&Action) -> bool = |s| matches!(s, Action::Fchdir(_));
         let is_fork: fn(&Action) -> bool = |s| matches!(s, Action::Fork(_));
         let is_fstat: fn(&Action) -> bool = |s| matches!(s, Action::Fstat(_));
+        let is_getdents: fn(&Action) -> bool = |s| matches!(s, Action::Getdents(_));
         let is_link: fn(&Action) -> bool = |s| matches!(s, Action::Link(_));
         let is_linkat: fn(&Action) -> bool = |s| matches!(s, Action::Linkat(_));
         let is_lstat: fn(&Action) -> bool = |s| matches!(s, Action::Lstat(_));
@@ -329,6 +336,7 @@ mod tests {
             ("fchdir(0) = 0", is_fchdir),
             ("fork() = 123", is_fork),
             ("fstat(1, 0x1) = -1 EBADF", is_fstat),
+            ("getdents(3, [], 4096) = 0", is_getdents),
             ("link(\"/a\", \"/b\") = 0", is_link),
             ("linkat(AT_FDCWD, \"a\", AT_FDCWD, \"b\", 0) = 0", is_linkat),
             ("lstat(\"/f\", 0x1) = -1 ENOENT", is_lstat),
