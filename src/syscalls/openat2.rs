@@ -258,11 +258,11 @@ mod tests {
             "/etc/hostname",
             super::super::buffer::Buffer::Address(0x7ffc1234),
             24,
-            -17,
+            -18,
         );
         assert_eq!(
             call.to_string(),
-            "openat2(AT_FDCWD, \"/etc/hostname\", 0x7ffc1234, 24) = -1 EEXIST"
+            "openat2(AT_FDCWD, \"/etc/hostname\", 0x7ffc1234, 24) = -1 EXDEV"
         );
     }
 

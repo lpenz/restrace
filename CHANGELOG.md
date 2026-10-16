@@ -51,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   padded away from the closing parenthesis.
 - Parse a failing call whose errno carries the parenthesized description
   `strace` appends, such as `= -1 ENOENT (No such file or directory)`.
+- Recognize the full set of `errno` names that `strace` prints, instead of a
+  small subset. Failure results using an unlisted name, such as `EFAULT` or
+  `EXDEV`, previously failed to parse and caused the whole call to be dropped.
 
 ## [0.2.0] - 2026-10-13
 
