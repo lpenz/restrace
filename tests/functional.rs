@@ -228,6 +228,34 @@ async fn parses_write() {
     assert_eq!(buf.0, b"hi\n");
 }
 
+/// Runs a shell command line whose `ldd(1)` writes its report with
+/// `writev(2)`, and checks that the call parses as `Action::Writev` with the
+/// bytes decoded from one of its buffers.
+#[::tokio::test]
+async fn parses_writev() {
+    if !strace_available() {
+        return;
+    }
+    let lines = trace_shell("ldd /bin/ls").await;
+
+    let decoded = lines
+        .iter()
+        .filter_map(|line| match &line.action {
+            restrace::Action::Writev(writev) => writev.iov.decoded(),
+            _ => None,
+        })
+        .find(|list| {
+            list.as_slice().iter().any(|iovec| {
+                iovec
+                    .base
+                    .decoded()
+                    .is_some_and(|bytes| !bytes.0.is_empty())
+            })
+        })
+        .expect("expected a parsed writev(2) with a decoded buffer");
+    assert!(!decoded.is_empty());
+}
+
 /// Runs a shell command line whose command substitution makes the shell create
 /// a `pipe2(2)`, and checks that the call parses as `Action::Pipe2`.
 #[::tokio::test]

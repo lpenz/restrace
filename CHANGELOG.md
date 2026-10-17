@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `RwfFlags` argument type.
 - A typed `write(2)` record, carried as the `Action::Write` variant, with the
   `Bytes` buffer-value type.
+- A typed `writev(2)` record, carried as the `Action::Writev` variant.
 
 ### Fixed
 

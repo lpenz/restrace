@@ -17,8 +17,9 @@ use std::str::FromStr;
 /// [`preadv(2)`](super::preadv::Preadv),
 /// [`preadv2(2)`](super::preadv2::Preadv2),
 /// [`readlink(2)`](super::readlink::Readlink),
-/// [`readlinkat(2)`](super::readlinkat::Readlinkat) and
-/// [`write(2)`](super::write::Write).
+/// [`readlinkat(2)`](super::readlinkat::Readlinkat),
+/// [`write(2)`](super::write::Write) and
+/// [`writev(2)`](super::writev::Writev).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LenResult {
     /// The call succeeded; it returned this many bytes.

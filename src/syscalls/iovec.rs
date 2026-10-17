@@ -2,9 +2,11 @@
 // This file is subject to the terms and conditions defined in
 // file 'LICENSE', which is part of this source code package.
 
-//! Vectored buffers decoded by the `readv(2)` family of system calls.
+//! Vectored buffers decoded by the `readv(2)` and `writev(2)` families of
+//! system calls.
 //!
 //! [`readv(2)`]: https://man7.org/linux/man-pages/man2/readv.2.html
+//! [`writev(2)`]: https://man7.org/linux/man-pages/man2/writev.2.html
 
 use super::buffer::{self, Buffer, BufferValue};
 use super::bytes::Bytes;
@@ -12,7 +14,7 @@ use super::parse::{self, ParseError};
 use std::fmt;
 use std::str::FromStr;
 
-/// One `struct iovec` entry of a `readv(2)`-family iov array.
+/// One `struct iovec` entry of a `readv(2)`/`writev(2)`-family iov array.
 ///
 /// ```text
 /// struct iovec {
@@ -65,7 +67,7 @@ impl FromStr for Iovec {
     }
 }
 
-/// The decoded iov array argument of a `readv(2)`-family system call.
+/// The decoded iov array argument of a `readv(2)`/`writev(2)`-family system call.
 ///
 /// A plain [`Vec`] cannot implement [`Display`](fmt::Display), so the decoded
 /// list is wrapped here to be usable as a [`Buffer`] value.
