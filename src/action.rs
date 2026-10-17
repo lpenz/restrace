@@ -8,8 +8,9 @@ use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Clone, Clone3, Close, Creat, Dup, Dup2, Dup3, Execve, Execveat, Faccessat,
     Faccessat2, Fchdir, Fork, Fstat, Generic, Getdents, Getdents64, Link, Linkat, Lstat, Mkdir,
-    Mkdirat, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Read, Readlink, Readlinkat,
-    Readv, Rename, Renameat, Renameat2, Rmdir, Stat, Symlink, Symlinkat, Unlink, Unlinkat, Vfork,
+    Mkdirat, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Read,
+    Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir, Stat, Symlink, Symlinkat,
+    Unlink, Unlinkat, Vfork,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -77,6 +78,12 @@ pub enum Action {
     Openat2(Openat2),
     /// A `pipe2(2)` call.
     Pipe2(Pipe2),
+    /// A `pread64(2)` call.
+    Pread64(Pread64),
+    /// A `preadv(2)` call.
+    Preadv(Preadv),
+    /// A `preadv2(2)` call.
+    Preadv2(Preadv2),
     /// A `read(2)` call.
     Read(Read),
     /// A `readlink(2)` call.
@@ -141,6 +148,9 @@ impl fmt::Display for Action {
             Self::Openat(syscall) => syscall.fmt(f),
             Self::Openat2(syscall) => syscall.fmt(f),
             Self::Pipe2(syscall) => syscall.fmt(f),
+            Self::Pread64(syscall) => syscall.fmt(f),
+            Self::Preadv(syscall) => syscall.fmt(f),
+            Self::Preadv2(syscall) => syscall.fmt(f),
             Self::Read(syscall) => syscall.fmt(f),
             Self::Readlink(syscall) => syscall.fmt(f),
             Self::Readlinkat(syscall) => syscall.fmt(f),
@@ -251,6 +261,15 @@ impl FromStr for Action {
         if let Ok(syscall) = Pipe2::from_str(s) {
             return Ok(Self::Pipe2(syscall));
         }
+        if let Ok(syscall) = Pread64::from_str(s) {
+            return Ok(Self::Pread64(syscall));
+        }
+        if let Ok(syscall) = Preadv::from_str(s) {
+            return Ok(Self::Preadv(syscall));
+        }
+        if let Ok(syscall) = Preadv2::from_str(s) {
+            return Ok(Self::Preadv2(syscall));
+        }
         if let Ok(syscall) = Read::from_str(s) {
             return Ok(Self::Read(syscall));
         }
@@ -332,6 +351,9 @@ mod tests {
         let is_openat: fn(&Action) -> bool = |s| matches!(s, Action::Openat(_));
         let is_openat2: fn(&Action) -> bool = |s| matches!(s, Action::Openat2(_));
         let is_pipe2: fn(&Action) -> bool = |s| matches!(s, Action::Pipe2(_));
+        let is_pread64: fn(&Action) -> bool = |s| matches!(s, Action::Pread64(_));
+        let is_preadv: fn(&Action) -> bool = |s| matches!(s, Action::Preadv(_));
+        let is_preadv2: fn(&Action) -> bool = |s| matches!(s, Action::Preadv2(_));
         let is_read: fn(&Action) -> bool = |s| matches!(s, Action::Read(_));
         let is_readlink: fn(&Action) -> bool = |s| matches!(s, Action::Readlink(_));
         let is_readlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Readlinkat(_));
@@ -396,6 +418,15 @@ mod tests {
                 is_openat2,
             ),
             ("pipe2([3, 4], O_CLOEXEC) = 0", is_pipe2),
+            ("pread64(3, \"carb\", 4, 0) = 4", is_pread64),
+            (
+                "preadv(3, [{iov_base=\"data\", iov_len=4}], 1, 1024) = 4",
+                is_preadv,
+            ),
+            (
+                "preadv2(3, [{iov_base=\"data\", iov_len=4}], 1, 1024, RWF_NOWAIT) = 4",
+                is_preadv2,
+            ),
             ("read(0, \"hi\\n\", 131072) = 3", is_read),
             ("readlink(\"/a\", \"/b\", 64) = 1", is_readlink),
             (
@@ -452,6 +483,12 @@ mod tests {
             "dup3(0, 4, O_CLOEXEC) = 4",
             "open(\"/tmp/file\", O_WRONLY|O_CREAT|O_TRUNC, 0644) = 3",
             "pipe2([3, 4], O_CLOEXEC) = 0",
+            "pread64(3, \"carb\", 4, 0) = 4",
+            "pread64(3, 0x7ffc1234, 64, 512) = -1 EBADF",
+            "preadv(3, [{iov_base=\"abcd\", iov_len=4}, {iov_base=\"\", iov_len=8}], 2, 1024) = 4",
+            "preadv(3, 0x1, 2, 0) = -1 EFAULT",
+            "preadv2(3, [{iov_base=\"abcd\", iov_len=4}], 1, 1024, RWF_NOWAIT) = 4",
+            "preadv2(3, 0x1, 2, 0, 0) = -1 EFAULT",
             "read(0, \"hi\\n\", 131072) = 3",
             "read(3, 0x7ffc1234, 64) = -1 EBADF",
             "readv(3, [{iov_base=\"abcd\", iov_len=4}, {iov_base=\"\", iov_len=8}], 2) = 4",

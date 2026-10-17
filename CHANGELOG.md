@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Bytes` buffer-value type.
 - A typed `readv(2)` record, carried as the `Action::Readv` variant, with the
   `IovecList` and `Iovec` argument types.
+- A typed `pread64(2)` record, carried as the `Action::Pread64` variant.
+- A typed `preadv(2)` record, carried as the `Action::Preadv` variant.
+- A typed `preadv2(2)` record, carried as the `Action::Preadv2` variant, with
+  the `RwfFlags` argument type.
 
 ### Fixed
 

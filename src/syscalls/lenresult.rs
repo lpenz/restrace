@@ -13,6 +13,9 @@ use std::str::FromStr;
 /// a buffer, such as [`getdents(2)`](super::getdents::Getdents),
 /// [`read(2)`](super::read::Read),
 /// [`readv(2)`](super::readv::Readv),
+/// [`pread64(2)`](super::pread64::Pread64),
+/// [`preadv(2)`](super::preadv::Preadv),
+/// [`preadv2(2)`](super::preadv2::Preadv2),
 /// [`readlink(2)`](super::readlink::Readlink) and
 /// [`readlinkat(2)`](super::readlinkat::Readlinkat).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
