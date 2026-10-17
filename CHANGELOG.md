@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A typed `readlinkat(2)` record, carried as the `Action::Readlinkat` variant.
 - A typed `openat2(2)` record, carried as the `Action::Openat2` variant, with
   the `OpenHow` and `ResolveFlags` argument types.
+- A typed `read(2)` record, carried as the `Action::Read` variant, with the
+  `Bytes` buffer-value type.
 
 ### Fixed
 

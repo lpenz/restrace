@@ -8,8 +8,8 @@ use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Clone, Clone3, Close, Creat, Dup, Dup2, Dup3, Execve, Execveat, Faccessat,
     Faccessat2, Fchdir, Fork, Fstat, Generic, Getdents, Getdents64, Link, Linkat, Lstat, Mkdir,
-    Mkdirat, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Readlink, Readlinkat, Rename,
-    Renameat, Renameat2, Rmdir, Stat, Symlink, Symlinkat, Unlink, Unlinkat, Vfork,
+    Mkdirat, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Read, Readlink, Readlinkat,
+    Rename, Renameat, Renameat2, Rmdir, Stat, Symlink, Symlinkat, Unlink, Unlinkat, Vfork,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -77,6 +77,8 @@ pub enum Action {
     Openat2(Openat2),
     /// A `pipe2(2)` call.
     Pipe2(Pipe2),
+    /// A `read(2)` call.
+    Read(Read),
     /// A `readlink(2)` call.
     Readlink(Readlink),
     /// A `readlinkat(2)` call.
@@ -137,6 +139,7 @@ impl fmt::Display for Action {
             Self::Openat(syscall) => syscall.fmt(f),
             Self::Openat2(syscall) => syscall.fmt(f),
             Self::Pipe2(syscall) => syscall.fmt(f),
+            Self::Read(syscall) => syscall.fmt(f),
             Self::Readlink(syscall) => syscall.fmt(f),
             Self::Readlinkat(syscall) => syscall.fmt(f),
             Self::Rename(syscall) => syscall.fmt(f),
@@ -245,6 +248,9 @@ impl FromStr for Action {
         if let Ok(syscall) = Pipe2::from_str(s) {
             return Ok(Self::Pipe2(syscall));
         }
+        if let Ok(syscall) = Read::from_str(s) {
+            return Ok(Self::Read(syscall));
+        }
         if let Ok(syscall) = Readlinkat::from_str(s) {
             return Ok(Self::Readlinkat(syscall));
         }
@@ -320,6 +326,7 @@ mod tests {
         let is_openat: fn(&Action) -> bool = |s| matches!(s, Action::Openat(_));
         let is_openat2: fn(&Action) -> bool = |s| matches!(s, Action::Openat2(_));
         let is_pipe2: fn(&Action) -> bool = |s| matches!(s, Action::Pipe2(_));
+        let is_read: fn(&Action) -> bool = |s| matches!(s, Action::Read(_));
         let is_readlink: fn(&Action) -> bool = |s| matches!(s, Action::Readlink(_));
         let is_readlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Readlinkat(_));
         let is_rename: fn(&Action) -> bool = |s| matches!(s, Action::Rename(_));
@@ -382,6 +389,7 @@ mod tests {
                 is_openat2,
             ),
             ("pipe2([3, 4], O_CLOEXEC) = 0", is_pipe2),
+            ("read(0, \"hi\\n\", 131072) = 3", is_read),
             ("readlink(\"/a\", \"/b\", 64) = 1", is_readlink),
             (
                 "readlinkat(AT_FDCWD, \"/a\", \"/b\", 64) = 1",
@@ -433,6 +441,8 @@ mod tests {
             "dup3(0, 4, O_CLOEXEC) = 4",
             "open(\"/tmp/file\", O_WRONLY|O_CREAT|O_TRUNC, 0644) = 3",
             "pipe2([3, 4], O_CLOEXEC) = 0",
+            "read(0, \"hi\\n\", 131072) = 3",
+            "read(3, 0x7ffc1234, 64) = -1 EBADF",
             "execve(\"/bin/echo\", [\"echo\", \"hello\"], [\"PATH=/bin\"]) = 0",
             "faccessat2(AT_FDCWD, \"/f\", R_OK, AT_EACCESS) = 0",
             "unlinkat(AT_FDCWD, \"/f\", 0) = -1 ENOENT",

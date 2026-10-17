@@ -11,6 +11,7 @@ use std::str::FromStr;
 
 /// The return value of a system call that reports how many bytes it wrote to
 /// a buffer, such as [`getdents(2)`](super::getdents::Getdents),
+/// [`read(2)`](super::read::Read),
 /// [`readlink(2)`](super::readlink::Readlink) and
 /// [`readlinkat(2)`](super::readlinkat::Readlinkat).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

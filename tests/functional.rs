@@ -186,6 +186,27 @@ async fn parses_dup2() {
     );
 }
 
+/// Runs a shell command line whose pipeline makes `cat(1)` read the
+/// producer's output through a pipe, and checks that the call parses as
+/// `Action::Read` with the bytes decoded from its buffer.
+#[::tokio::test]
+async fn parses_read() {
+    if !strace_available() {
+        return;
+    }
+    let lines = trace_shell("printf 'hi\\n' | cat").await;
+
+    let buf = lines
+        .iter()
+        .filter_map(|line| match &line.action {
+            restrace::Action::Read(read) => read.buf.decoded(),
+            _ => None,
+        })
+        .find(|buf| !buf.0.is_empty())
+        .expect("expected a parsed read(2) with a decoded buffer");
+    assert_eq!(buf.0, b"hi\n");
+}
+
 /// Runs a shell command line whose command substitution makes the shell create
 /// a `pipe2(2)`, and checks that the call parses as `Action::Pipe2`.
 #[::tokio::test]
