@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A typed `preadv(2)` record, carried as the `Action::Preadv` variant.
 - A typed `preadv2(2)` record, carried as the `Action::Preadv2` variant, with
   the `RwfFlags` argument type.
+- A typed `write(2)` record, carried as the `Action::Write` variant, with the
+  `Bytes` buffer-value type.
 
 ### Fixed
 

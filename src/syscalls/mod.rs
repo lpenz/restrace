@@ -73,6 +73,7 @@ mod symlinkat;
 mod unlink;
 mod unlinkat;
 mod vfork;
+mod write;
 
 pub use access::Access;
 pub use accessmode::AccessMode;
@@ -136,3 +137,4 @@ pub use symlinkat::Symlinkat;
 pub use unlink::Unlink;
 pub use unlinkat::{Unlinkat, UnlinkatFlags};
 pub use vfork::Vfork;
+pub use write::Write;

@@ -10,7 +10,7 @@ use crate::syscalls::{
     Faccessat2, Fchdir, Fork, Fstat, Generic, Getdents, Getdents64, Link, Linkat, Lstat, Mkdir,
     Mkdirat, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Read,
     Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir, Stat, Symlink, Symlinkat,
-    Unlink, Unlinkat, Vfork,
+    Unlink, Unlinkat, Vfork, Write,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -112,6 +112,8 @@ pub enum Action {
     Unlinkat(Unlinkat),
     /// A `vfork(2)` call.
     Vfork(Vfork),
+    /// A `write(2)` call.
+    Write(Write),
     /// A call that no dedicated type parses.
     Generic(Generic),
 }
@@ -165,6 +167,7 @@ impl fmt::Display for Action {
             Self::Unlink(syscall) => syscall.fmt(f),
             Self::Unlinkat(syscall) => syscall.fmt(f),
             Self::Vfork(syscall) => syscall.fmt(f),
+            Self::Write(syscall) => syscall.fmt(f),
             Self::Generic(syscall) => syscall.fmt(f),
         }
     }
@@ -312,6 +315,9 @@ impl FromStr for Action {
         if let Ok(syscall) = Vfork::from_str(s) {
             return Ok(Self::Vfork(syscall));
         }
+        if let Ok(syscall) = Write::from_str(s) {
+            return Ok(Self::Write(syscall));
+        }
         Generic::from_str(s).map(Self::Generic)
     }
 }
@@ -368,6 +374,7 @@ mod tests {
         let is_unlink: fn(&Action) -> bool = |s| matches!(s, Action::Unlink(_));
         let is_unlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Unlinkat(_));
         let is_vfork: fn(&Action) -> bool = |s| matches!(s, Action::Vfork(_));
+        let is_write: fn(&Action) -> bool = |s| matches!(s, Action::Write(_));
         let is_generic: fn(&Action) -> bool = |s| matches!(s, Action::Generic(_));
         for (line, variant) in [
             ("access(\"/f\", R_OK) = 0", is_access),
@@ -453,6 +460,7 @@ mod tests {
             ("unlink(\"/f\") = 0", is_unlink),
             ("unlinkat(AT_FDCWD, \"/f\", 0) = 0", is_unlinkat),
             ("vfork() = 123", is_vfork),
+            ("write(1, \"hi\\n\", 3) = 3", is_write),
             ("spill(0x1, 0x2) = 0", is_generic),
         ] {
             let syscall = Action::from_str(line).unwrap();
@@ -493,6 +501,8 @@ mod tests {
             "read(3, 0x7ffc1234, 64) = -1 EBADF",
             "readv(3, [{iov_base=\"abcd\", iov_len=4}, {iov_base=\"\", iov_len=8}], 2) = 4",
             "readv(3, 0x1, 2) = -1 EFAULT",
+            "write(1, \"hi\\n\", 3) = 3",
+            "write(3, 0x7fff1234, 64) = -1 EFAULT",
             "execve(\"/bin/echo\", [\"echo\", \"hello\"], [\"PATH=/bin\"]) = 0",
             "faccessat2(AT_FDCWD, \"/f\", R_OK, AT_EACCESS) = 0",
             "unlinkat(AT_FDCWD, \"/f\", 0) = -1 ENOENT",

@@ -9,15 +9,16 @@ use super::parse::{self, ParseError};
 use std::fmt;
 use std::str::FromStr;
 
-/// The return value of a system call that reports how many bytes it wrote to
-/// a buffer, such as [`getdents(2)`](super::getdents::Getdents),
+/// The return value of a system call that reports how many bytes it
+/// transferred, such as [`getdents(2)`](super::getdents::Getdents),
 /// [`read(2)`](super::read::Read),
 /// [`readv(2)`](super::readv::Readv),
 /// [`pread64(2)`](super::pread64::Pread64),
 /// [`preadv(2)`](super::preadv::Preadv),
 /// [`preadv2(2)`](super::preadv2::Preadv2),
-/// [`readlink(2)`](super::readlink::Readlink) and
-/// [`readlinkat(2)`](super::readlinkat::Readlinkat).
+/// [`readlink(2)`](super::readlink::Readlink),
+/// [`readlinkat(2)`](super::readlinkat::Readlinkat) and
+/// [`write(2)`](super::write::Write).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LenResult {
     /// The call succeeded; it returned this many bytes.
