@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `OpenHow` and `ResolveFlags` argument types.
 - A typed `read(2)` record, carried as the `Action::Read` variant, with the
   `Bytes` buffer-value type.
+- A typed `readv(2)` record, carried as the `Action::Readv` variant, with the
+  `IovecList` and `Iovec` argument types.
 
 ### Fixed
 
