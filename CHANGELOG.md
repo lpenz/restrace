@@ -53,6 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A typed `pwritev(2)` record, carried as the `Action::Pwritev` variant.
 - A typed `pwritev2(2)` record, carried as the `Action::Pwritev2` variant, with
   the `RwfFlags` argument type.
+- A typed `mmap(2)` record, carried as the `Action::Mmap` variant, with the
+  `ProtFlags`, `MmapFlags` and `MapResult` argument types.
 
 ### Fixed
 

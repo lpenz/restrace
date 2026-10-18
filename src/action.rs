@@ -8,7 +8,7 @@ use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Clone, Clone3, Close, Creat, Dup, Dup2, Dup3, Execve, Execveat, Faccessat,
     Faccessat2, Fchdir, Fork, Fstat, Generic, Getdents, Getdents64, Link, Linkat, Lstat, Mkdir,
-    Mkdirat, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2,
+    Mkdirat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2,
     Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir, Stat,
     Symlink, Symlinkat, Unlink, Unlinkat, Vfork, Write, Writev,
 };
@@ -68,6 +68,8 @@ pub enum Action {
     Mkdir(Mkdir),
     /// A `mkdirat(2)` call.
     Mkdirat(Mkdirat),
+    /// An `mmap(2)` call.
+    Mmap(Mmap),
     /// A `newfstatat(2)` call.
     Newfstatat(Newfstatat),
     /// An `open(2)` call.
@@ -151,6 +153,7 @@ impl fmt::Display for Action {
             Self::Lstat(syscall) => syscall.fmt(f),
             Self::Mkdir(syscall) => syscall.fmt(f),
             Self::Mkdirat(syscall) => syscall.fmt(f),
+            Self::Mmap(syscall) => syscall.fmt(f),
             Self::Newfstatat(syscall) => syscall.fmt(f),
             Self::Open(syscall) => syscall.fmt(f),
             Self::Openat(syscall) => syscall.fmt(f),
@@ -257,6 +260,9 @@ impl FromStr for Action {
         }
         if let Ok(syscall) = Mkdirat::from_str(s) {
             return Ok(Self::Mkdirat(syscall));
+        }
+        if let Ok(syscall) = Mmap::from_str(s) {
+            return Ok(Self::Mmap(syscall));
         }
         if let Ok(syscall) = Newfstatat::from_str(s) {
             return Ok(Self::Newfstatat(syscall));
@@ -370,6 +376,7 @@ mod tests {
         let is_lstat: fn(&Action) -> bool = |s| matches!(s, Action::Lstat(_));
         let is_mkdir: fn(&Action) -> bool = |s| matches!(s, Action::Mkdir(_));
         let is_mkdirat: fn(&Action) -> bool = |s| matches!(s, Action::Mkdirat(_));
+        let is_mmap: fn(&Action) -> bool = |s| matches!(s, Action::Mmap(_));
         let is_newfstatat: fn(&Action) -> bool = |s| matches!(s, Action::Newfstatat(_));
         let is_open: fn(&Action) -> bool = |s| matches!(s, Action::Open(_));
         let is_openat: fn(&Action) -> bool = |s| matches!(s, Action::Openat(_));
@@ -435,6 +442,11 @@ mod tests {
             ("lstat(\"/f\", 0x1) = -1 ENOENT", is_lstat),
             ("mkdir(\"/tmp/dir\", 0755) = 0", is_mkdir),
             ("mkdirat(AT_FDCWD, \"/tmp/dir\", 0755) = 0", is_mkdirat),
+            (
+                "mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, \
+                 -1, 0) = 0x7f1234567000",
+                is_mmap,
+            ),
             (
                 "newfstatat(AT_FDCWD, \"/f\", 0x1, AT_SYMLINK_NOFOLLOW) = 0",
                 is_newfstatat,
@@ -543,6 +555,8 @@ mod tests {
             "writev(1, [{iov_base=\"hi\\n\", iov_len=3}], 1) = 3",
             "writev(3, [{iov_base=\"abcd\", iov_len=4}, {iov_base=\"\", iov_len=8}], 2) = 4",
             "writev(3, 0x1, 2) = -1 EFAULT",
+            "mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f1234567000",
+            "mmap(NULL, 0, PROT_NONE, MAP_FILE, 0, 0) = -1 EBADF",
             "execve(\"/bin/echo\", [\"echo\", \"hello\"], [\"PATH=/bin\"]) = 0",
             "faccessat2(AT_FDCWD, \"/f\", R_OK, AT_EACCESS) = 0",
             "unlinkat(AT_FDCWD, \"/f\", 0) = -1 ENOENT",

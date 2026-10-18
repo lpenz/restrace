@@ -320,6 +320,24 @@ async fn parses_pipe2() {
     );
 }
 
+/// Runs a shell command line whose dynamic loader maps the executable and its
+/// shared libraries with `mmap(2)`, and checks that the call parses as
+/// `Action::Mmap`.
+#[::tokio::test]
+async fn parses_mmap() {
+    if !strace_available() {
+        return;
+    }
+    let lines = trace_shell("true").await;
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| matches!(line.action, restrace::Action::Mmap(_))),
+        "expected a parsed mmap(2): {lines:?}"
+    );
+}
+
 #[::tokio::test]
 async fn exits_with_code() {
     if !strace_available() {
