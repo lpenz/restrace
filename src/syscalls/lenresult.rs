@@ -20,8 +20,9 @@ use std::str::FromStr;
 /// [`readlinkat(2)`](super::readlinkat::Readlinkat),
 /// [`write(2)`](super::write::Write),
 /// [`writev(2)`](super::writev::Writev),
-/// [`pwritev(2)`](super::pwritev::Pwritev) and
-/// [`pwritev2(2)`](super::pwritev2::Pwritev2).
+/// [`pwritev(2)`](super::pwritev::Pwritev),
+/// [`pwritev2(2)`](super::pwritev2::Pwritev2) and
+/// [`splice(2)`](super::splice::Splice).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LenResult {
     /// The call succeeded; it returned this many bytes.

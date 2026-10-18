@@ -55,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `RwfFlags` argument type.
 - A typed `mmap(2)` record, carried as the `Action::Mmap` variant, with the
   `ProtFlags`, `MmapFlags` and `MapResult` argument types.
+- A typed `splice(2)` record, carried as the `Action::Splice` variant, with the
+  `SpliceFlags` argument type and the `Indirect` buffer-value type.
 
 ### Fixed
 

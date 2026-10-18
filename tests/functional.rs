@@ -338,6 +338,35 @@ async fn parses_mmap() {
     );
 }
 
+/// Runs a Python script that moves bytes from a file to a pipe with
+/// `splice(2)`, and checks that the call parses as `Action::Splice`.
+///
+/// No common shell command issues `splice` directly, so this test needs
+/// `python3` on top of `strace`; it skips itself when either is missing.
+#[::tokio::test]
+async fn parses_splice() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let script = "import os; fd = os.open('/etc/passwd', os.O_RDONLY); \
+                  r, w = os.pipe(); os.splice(fd, w, 5); \
+                  os.close(fd); os.close(r); os.close(w)";
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", script]);
+    let lines = trace(cmd).await;
+
+    let splice = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Splice(splice) => Some(splice),
+            _ => None,
+        })
+        .expect("expected a parsed splice(2)");
+    assert_eq!(splice.len, 5);
+    assert!(splice.off_in.decoded().is_none(), "expected a NULL offset");
+    assert_eq!(splice.result.byte_count(), Some(5));
+}
+
 #[::tokio::test]
 async fn exits_with_code() {
     if !strace_available() {

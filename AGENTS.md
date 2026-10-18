@@ -130,8 +130,9 @@ same way the existing records do:
 
 - `Buffer<T>` (`buffer.rs`): an argument that `strace` decodes or shows as a
   raw address; pair it with `Bytes` (`bytes.rs`) for byte strings, `Quoted`
-  (`quoted.rs`) for quoted paths, or `IovecList` (`iovec.rs`) for iovec
-  arrays.
+  (`quoted.rs`) for quoted paths, `IovecList` (`iovec.rs`) for iovec arrays,
+  or `Indirect<T>` (`indirect.rs`) for a scalar `strace` reads through a
+  pointer and prints as `[value]`.
 - `LenResult` (`lenresult.rs`): a byte-count-or-errno return value.
 - `OkResult` (`result.rs`): a generic success-or-errno return value.
 - `FdResult` (`fd.rs`), `Errno` (`errno.rs`), `Mode`/`FileMode`/`AccessMode`,
