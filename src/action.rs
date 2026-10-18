@@ -10,7 +10,7 @@ use crate::syscalls::{
     Faccessat2, Fchdir, Fork, Fstat, Generic, Getdents, Getdents64, Link, Linkat, Lstat, Mkdir,
     Mkdirat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2,
     Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir,
-    Splice, Stat, Symlink, Symlinkat, Unlink, Unlinkat, Vfork, Write, Writev,
+    Sendfile, Splice, Stat, Symlink, Symlinkat, Unlink, Unlinkat, Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -106,6 +106,8 @@ pub enum Action {
     Renameat2(Renameat2),
     /// An `rmdir(2)` call.
     Rmdir(Rmdir),
+    /// A `sendfile(2)` call.
+    Sendfile(Sendfile),
     /// A `splice(2)` call.
     Splice(Splice),
     /// A `stat(2)` call.
@@ -174,6 +176,7 @@ impl fmt::Display for Action {
             Self::Renameat(syscall) => syscall.fmt(f),
             Self::Renameat2(syscall) => syscall.fmt(f),
             Self::Rmdir(syscall) => syscall.fmt(f),
+            Self::Sendfile(syscall) => syscall.fmt(f),
             Self::Splice(syscall) => syscall.fmt(f),
             Self::Stat(syscall) => syscall.fmt(f),
             Self::Symlink(syscall) => syscall.fmt(f),
@@ -321,6 +324,9 @@ impl FromStr for Action {
         if let Ok(syscall) = Rmdir::from_str(s) {
             return Ok(Self::Rmdir(syscall));
         }
+        if let Ok(syscall) = Sendfile::from_str(s) {
+            return Ok(Self::Sendfile(syscall));
+        }
         if let Ok(syscall) = Splice::from_str(s) {
             return Ok(Self::Splice(syscall));
         }
@@ -401,6 +407,7 @@ mod tests {
         let is_renameat: fn(&Action) -> bool = |s| matches!(s, Action::Renameat(_));
         let is_renameat2: fn(&Action) -> bool = |s| matches!(s, Action::Renameat2(_));
         let is_rmdir: fn(&Action) -> bool = |s| matches!(s, Action::Rmdir(_));
+        let is_sendfile: fn(&Action) -> bool = |s| matches!(s, Action::Sendfile(_));
         let is_splice: fn(&Action) -> bool = |s| matches!(s, Action::Splice(_));
         let is_stat: fn(&Action) -> bool = |s| matches!(s, Action::Stat(_));
         let is_symlink: fn(&Action) -> bool = |s| matches!(s, Action::Symlink(_));
@@ -502,6 +509,7 @@ mod tests {
                 is_renameat2,
             ),
             ("rmdir(\"/tmp/dir\") = 0", is_rmdir),
+            ("sendfile(4, 3, [0 => 10], 100) = 10", is_sendfile),
             (
                 "splice(5, NULL, 4, NULL, 64, SPLICE_F_MOVE) = 64",
                 is_splice,
@@ -576,6 +584,8 @@ mod tests {
             "clone3({flags=CLONE_VM, exit_signal=SIGCHLD}, 88) = -1 EPERM",
             "splice(5, [5], 4, NULL, 64, SPLICE_F_MOVE) = 64",
             "splice(5, NULL, 4, NULL, 0, 0x10 /* SPLICE_F_??? */) = 0",
+            "sendfile(4, 3, [0 => 10], 100) = 10",
+            "sendfile(1, 3, NULL, 100) = 100",
             "stat(\"/etc/hostname\", 0x7ffd684fe7b0) = 0",
             "spill(0x1000, -7, \"a, b\") = 0",
             "+++ exited with 3 +++",

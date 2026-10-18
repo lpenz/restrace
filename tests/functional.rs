@@ -367,6 +367,41 @@ async fn parses_splice() {
     assert_eq!(splice.result.byte_count(), Some(5));
 }
 
+/// Runs a Python one-liner whose `os.sendfile` call moves bytes from a file
+/// to its standard output, and checks that the call parses as
+/// `Action::Sendfile` with the offset it started from and the value the call
+/// moved it to.
+///
+/// No common shell command issues `sendfile` directly, so this test needs
+/// `python3` on top of `strace`; it skips itself when either is missing.
+#[::tokio::test]
+async fn parses_sendfile() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let script = "import os; fd = os.open('/etc/passwd', os.O_RDONLY); \
+                  os.sendfile(1, fd, 0, 5); os.close(fd)";
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", script]);
+    let lines = trace(cmd).await;
+
+    let sendfile = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Sendfile(sendfile) => Some(sendfile),
+            _ => None,
+        })
+        .expect("expected a parsed sendfile(2)");
+    assert_eq!(sendfile.count, 5);
+    assert_eq!(sendfile.result.byte_count(), Some(5));
+    let offset = sendfile
+        .offset
+        .decoded()
+        .expect("expected a decoded offset");
+    assert_eq!(offset.value, 0);
+    assert_eq!(offset.moved_to, Some(5));
+}
+
 #[::tokio::test]
 async fn exits_with_code() {
     if !strace_available() {

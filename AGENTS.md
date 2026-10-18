@@ -132,7 +132,8 @@ same way the existing records do:
   raw address; pair it with `Bytes` (`bytes.rs`) for byte strings, `Quoted`
   (`quoted.rs`) for quoted paths, `IovecList` (`iovec.rs`) for iovec arrays,
   or `Indirect<T>` (`indirect.rs`) for a scalar `strace` reads through a
-  pointer and prints as `[value]`.
+  pointer and prints as `[value]`, or as `[value => new]` when the call
+  changed it.
 - `LenResult` (`lenresult.rs`): a byte-count-or-errno return value.
 - `OkResult` (`result.rs`): a generic success-or-errno return value.
 - `FdResult` (`fd.rs`), `Errno` (`errno.rs`), `Mode`/`FileMode`/`AccessMode`,

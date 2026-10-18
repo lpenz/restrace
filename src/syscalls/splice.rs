@@ -166,7 +166,7 @@ mod tests {
     use crate::syscalls::errno::Errno;
 
     fn value(offset: i64) -> Buffer<Indirect<i64>> {
-        Buffer::Decoded(Indirect(offset))
+        Buffer::Decoded(Indirect::new(offset))
     }
 
     #[test]

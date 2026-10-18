@@ -57,6 +57,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ProtFlags`, `MmapFlags` and `MapResult` argument types.
 - A typed `splice(2)` record, carried as the `Action::Splice` variant, with the
   `SpliceFlags` argument type and the `Indirect` buffer-value type.
+- A typed `sendfile(2)` record, carried as the `Action::Sendfile` variant, with
+  the `Indirect` offset value type.
+
+### Changed
+
+- The `Indirect` value type gained a `moved_to` field, so a value that `strace`
+  reads through a pointer again on exit and the call changed — such as the
+  offset of `sendfile(2)` — round-trips as `[0 => 10]`. The parser accepts
+  both this form and the older `[0] => [10]` that `strace` up to 6.x printed.
 
 ### Fixed
 
