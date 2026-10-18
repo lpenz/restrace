@@ -25,6 +25,15 @@ fn strace_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Returns whether `python3` is available in this environment.
+fn python3_available() -> bool {
+    Command::new("python3")
+        .arg("--version")
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
 /// Returns whether `strace` can trace forks in this environment.
 fn strace_can_trace_forks() -> bool {
     let out = Command::new("strace")
@@ -253,6 +262,44 @@ async fn parses_writev() {
             })
         })
         .expect("expected a parsed writev(2) with a decoded buffer");
+    assert!(!decoded.is_empty());
+}
+
+/// Runs a Python one-liner whose `os.pwritev` call makes the traced process
+/// issue a `pwritev2(2)` — the syscall glibc implements `os.pwritev` with —
+/// and checks that the call parses as `Action::Pwritev2` with the bytes
+/// decoded from one of its buffers.
+///
+/// No common shell command issues the `pwritev` family directly, so this
+/// test needs `python3` on top of `strace`; it skips itself when either is
+/// missing.
+#[::tokio::test]
+async fn parses_pwritev2() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-pwritev2-{}.out", std::process::id()));
+    let script = format!(
+        "import os; fd = os.open({path:?}, os.O_CREAT | os.O_WRONLY, 0o644); \
+         os.pwritev(fd, [b'hi\\n'], 0); os.close(fd); os.unlink({path:?})",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+
+    let decoded = lines
+        .iter()
+        .filter_map(|line| match &line.action {
+            restrace::Action::Pwritev2(pwritev2) => pwritev2.iov.decoded(),
+            _ => None,
+        })
+        .find(|list| {
+            list.as_slice()
+                .iter()
+                .any(|iovec| iovec.base.decoded().is_some_and(|bytes| bytes.0 == b"hi\n"))
+        })
+        .expect("expected a parsed pwritev2(2) with a decoded buffer");
     assert!(!decoded.is_empty());
 }
 

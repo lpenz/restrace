@@ -8,9 +8,9 @@ use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Clone, Clone3, Close, Creat, Dup, Dup2, Dup3, Execve, Execveat, Faccessat,
     Faccessat2, Fchdir, Fork, Fstat, Generic, Getdents, Getdents64, Link, Linkat, Lstat, Mkdir,
-    Mkdirat, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Read,
-    Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir, Stat, Symlink, Symlinkat,
-    Unlink, Unlinkat, Vfork, Write, Writev,
+    Mkdirat, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2,
+    Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir, Stat,
+    Symlink, Symlinkat, Unlink, Unlinkat, Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -84,6 +84,10 @@ pub enum Action {
     Preadv(Preadv),
     /// A `preadv2(2)` call.
     Preadv2(Preadv2),
+    /// A `pwritev(2)` call.
+    Pwritev(Pwritev),
+    /// A `pwritev2(2)` call.
+    Pwritev2(Pwritev2),
     /// A `read(2)` call.
     Read(Read),
     /// A `readlink(2)` call.
@@ -155,6 +159,8 @@ impl fmt::Display for Action {
             Self::Pread64(syscall) => syscall.fmt(f),
             Self::Preadv(syscall) => syscall.fmt(f),
             Self::Preadv2(syscall) => syscall.fmt(f),
+            Self::Pwritev(syscall) => syscall.fmt(f),
+            Self::Pwritev2(syscall) => syscall.fmt(f),
             Self::Read(syscall) => syscall.fmt(f),
             Self::Readlink(syscall) => syscall.fmt(f),
             Self::Readlinkat(syscall) => syscall.fmt(f),
@@ -276,6 +282,12 @@ impl FromStr for Action {
         if let Ok(syscall) = Preadv2::from_str(s) {
             return Ok(Self::Preadv2(syscall));
         }
+        if let Ok(syscall) = Pwritev::from_str(s) {
+            return Ok(Self::Pwritev(syscall));
+        }
+        if let Ok(syscall) = Pwritev2::from_str(s) {
+            return Ok(Self::Pwritev2(syscall));
+        }
         if let Ok(syscall) = Read::from_str(s) {
             return Ok(Self::Read(syscall));
         }
@@ -366,6 +378,8 @@ mod tests {
         let is_pread64: fn(&Action) -> bool = |s| matches!(s, Action::Pread64(_));
         let is_preadv: fn(&Action) -> bool = |s| matches!(s, Action::Preadv(_));
         let is_preadv2: fn(&Action) -> bool = |s| matches!(s, Action::Preadv2(_));
+        let is_pwritev: fn(&Action) -> bool = |s| matches!(s, Action::Pwritev(_));
+        let is_pwritev2: fn(&Action) -> bool = |s| matches!(s, Action::Pwritev2(_));
         let is_read: fn(&Action) -> bool = |s| matches!(s, Action::Read(_));
         let is_readlink: fn(&Action) -> bool = |s| matches!(s, Action::Readlink(_));
         let is_readlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Readlinkat(_));
@@ -441,6 +455,14 @@ mod tests {
                 "preadv2(3, [{iov_base=\"data\", iov_len=4}], 1, 1024, RWF_NOWAIT) = 4",
                 is_preadv2,
             ),
+            (
+                "pwritev(3, [{iov_base=\"data\", iov_len=4}], 1, 1024) = 4",
+                is_pwritev,
+            ),
+            (
+                "pwritev2(3, [{iov_base=\"data\", iov_len=4}], 1, 1024, RWF_NOWAIT) = 4",
+                is_pwritev2,
+            ),
             ("read(0, \"hi\\n\", 131072) = 3", is_read),
             ("readlink(\"/a\", \"/b\", 64) = 1", is_readlink),
             (
@@ -508,6 +530,10 @@ mod tests {
             "preadv(3, 0x1, 2, 0) = -1 EFAULT",
             "preadv2(3, [{iov_base=\"abcd\", iov_len=4}], 1, 1024, RWF_NOWAIT) = 4",
             "preadv2(3, 0x1, 2, 0, 0) = -1 EFAULT",
+            "pwritev(3, [{iov_base=\"abcd\", iov_len=4}, {iov_base=\"\", iov_len=8}], 2, 1024) = 4",
+            "pwritev(3, 0x1, 2, 0) = -1 EFAULT",
+            "pwritev2(3, [{iov_base=\"abcd\", iov_len=4}], 1, 1024, RWF_NOWAIT) = 4",
+            "pwritev2(3, 0x1, 2, 0, 0) = -1 EFAULT",
             "read(0, \"hi\\n\", 131072) = 3",
             "read(3, 0x7ffc1234, 64) = -1 EBADF",
             "readv(3, [{iov_base=\"abcd\", iov_len=4}, {iov_base=\"\", iov_len=8}], 2) = 4",

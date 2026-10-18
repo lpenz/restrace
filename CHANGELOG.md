@@ -50,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A typed `write(2)` record, carried as the `Action::Write` variant, with the
   `Bytes` buffer-value type.
 - A typed `writev(2)` record, carried as the `Action::Writev` variant.
+- A typed `pwritev(2)` record, carried as the `Action::Pwritev` variant.
+- A typed `pwritev2(2)` record, carried as the `Action::Pwritev2` variant, with
+  the `RwfFlags` argument type.
 
 ### Fixed
 
