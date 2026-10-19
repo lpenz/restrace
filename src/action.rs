@@ -6,11 +6,11 @@
 
 use crate::exit::Exit;
 use crate::syscalls::{
-    Access, Chdir, Clone, Clone3, Close, Creat, Dup, Dup2, Dup3, Execve, Execveat, Faccessat,
-    Faccessat2, Fchdir, Fork, Fstat, Generic, Getdents, Getdents64, Link, Linkat, Lstat, Mkdir,
-    Mkdirat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2,
-    Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir,
-    Sendfile, Splice, Stat, Symlink, Symlinkat, Unlink, Unlinkat, Vfork, Write, Writev,
+    Access, Chdir, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3, Execve, Execveat,
+    Faccessat, Faccessat2, Fchdir, Fork, Fstat, Generic, Getdents, Getdents64, Link, Linkat, Lstat,
+    Mkdir, Mkdirat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv,
+    Preadv2, Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2,
+    Rmdir, Sendfile, Splice, Stat, Symlink, Symlinkat, Unlink, Unlinkat, Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -30,6 +30,8 @@ pub enum Action {
     Clone3(Clone3),
     /// A `close(2)` call.
     Close(Close),
+    /// A `copy_file_range(2)` call.
+    CopyFileRange(CopyFileRange),
     /// A `creat(2)` call.
     Creat(Creat),
     /// A `dup(2)` call.
@@ -138,6 +140,7 @@ impl fmt::Display for Action {
             Self::Clone(syscall) => syscall.fmt(f),
             Self::Clone3(syscall) => syscall.fmt(f),
             Self::Close(syscall) => syscall.fmt(f),
+            Self::CopyFileRange(syscall) => syscall.fmt(f),
             Self::Creat(syscall) => syscall.fmt(f),
             Self::Dup(syscall) => syscall.fmt(f),
             Self::Dup2(syscall) => syscall.fmt(f),
@@ -209,6 +212,9 @@ impl FromStr for Action {
         }
         if let Ok(syscall) = Close::from_str(s) {
             return Ok(Self::Close(syscall));
+        }
+        if let Ok(syscall) = CopyFileRange::from_str(s) {
+            return Ok(Self::CopyFileRange(syscall));
         }
         if let Ok(syscall) = Creat::from_str(s) {
             return Ok(Self::Creat(syscall));
@@ -369,6 +375,7 @@ mod tests {
         let is_clone: fn(&Action) -> bool = |s| matches!(s, Action::Clone(_));
         let is_clone3: fn(&Action) -> bool = |s| matches!(s, Action::Clone3(_));
         let is_close: fn(&Action) -> bool = |s| matches!(s, Action::Close(_));
+        let is_copy_file_range: fn(&Action) -> bool = |s| matches!(s, Action::CopyFileRange(_));
         let is_creat: fn(&Action) -> bool = |s| matches!(s, Action::Creat(_));
         let is_dup: fn(&Action) -> bool = |s| matches!(s, Action::Dup(_));
         let is_dup2: fn(&Action) -> bool = |s| matches!(s, Action::Dup2(_));
@@ -430,6 +437,10 @@ mod tests {
                 is_clone3,
             ),
             ("close(0) = 0", is_close),
+            (
+                "copy_file_range(3, [0], 4, [0], 5, 0) = 5",
+                is_copy_file_range,
+            ),
             ("creat(\"/tmp/file\", 0644) = 3", is_creat),
             ("dup(0) = 3", is_dup),
             ("dup2(0, 3) = 3", is_dup2),
@@ -550,6 +561,8 @@ mod tests {
             "access(\"/f\", R_OK) = 0",
             "chdir(\"/tmp\") = 0",
             "close(3) = -1 EBADF",
+            "copy_file_range(3, [0], 4, [0], 5, 0) = 5",
+            "copy_file_range(3, NULL, 4, NULL, 5, 0) = -1 EBADF",
             "dup(0) = 3",
             "dup2(1, 3) = 3",
             "dup3(0, 4, O_CLOEXEC) = 4",

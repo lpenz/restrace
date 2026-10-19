@@ -22,8 +22,9 @@ use std::str::FromStr;
 /// [`writev(2)`](super::writev::Writev),
 /// [`pwritev(2)`](super::pwritev::Pwritev),
 /// [`pwritev2(2)`](super::pwritev2::Pwritev2),
-/// [`splice(2)`](super::splice::Splice) and
-/// [`sendfile(2)`](super::sendfile::Sendfile).
+/// [`splice(2)`](super::splice::Splice),
+/// [`sendfile(2)`](super::sendfile::Sendfile) and
+/// [`copy_file_range(2)`](super::copy_file_range::CopyFileRange).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LenResult {
     /// The call succeeded; it returned this many bytes.

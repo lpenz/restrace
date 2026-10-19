@@ -59,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SpliceFlags` argument type and the `Indirect` buffer-value type.
 - A typed `sendfile(2)` record, carried as the `Action::Sendfile` variant, with
   the `Indirect` offset value type.
+- A typed `copy_file_range(2)` record, carried as the `Action::CopyFileRange`
+  variant, with the `Indirect` offset value types.
 
 ### Changed
 

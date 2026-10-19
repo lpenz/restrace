@@ -265,6 +265,40 @@ async fn parses_writev() {
     assert!(!decoded.is_empty());
 }
 
+/// Runs a Python one-liner whose `os.copy_file_range` call makes the traced
+/// process issue a `copy_file_range(2)`, and checks that the call parses as
+/// `Action::CopyFileRange`.
+///
+/// No common shell command issues `copy_file_range(2)` directly, so this test
+/// needs `python3` on top of `strace`; it skips itself when either is missing.
+#[::tokio::test]
+async fn parses_copy_file_range() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let dir = std::env::temp_dir();
+    let src = dir.join(format!("restrace-cfr-src-{}", std::process::id()));
+    let dst = dir.join(format!("restrace-cfr-dst-{}", std::process::id()));
+    let script = format!(
+        "import os; open({src:?}, 'wb').write(b'hello'); \
+         fd_in = os.open({src:?}, os.O_RDONLY); fd_out = os.open({dst:?}, os.O_CREAT | os.O_WRONLY, 0o644); \
+         os.copy_file_range(fd_in, fd_out, 5, 0, 0); os.close(fd_in); os.close(fd_out); \
+         os.unlink({src:?}); os.unlink({dst:?})",
+        src = src.display().to_string(),
+        dst = dst.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| matches!(line.action, restrace::Action::CopyFileRange(_))),
+        "expected a parsed copy_file_range(2): {lines:?}"
+    );
+}
+
 /// Runs a Python one-liner whose `os.pwritev` call makes the traced process
 /// issue a `pwritev2(2)` — the syscall glibc implements `os.pwritev` with —
 /// and checks that the call parses as `Action::Pwritev2` with the bytes
