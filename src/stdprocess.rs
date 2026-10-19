@@ -23,12 +23,16 @@ use std::process::{Child, Command, ExitStatus};
 /// rendered as `name(...) = result` with a single space before the `=`.
 /// `-v` stops `strace` from abbreviating structures and arrays, so that calls
 /// like `stat(2)` and `getdents(2)` carry their decoded fields.
-const STRACE_FLAGS: [&str; 5] = [
+/// `-s 1048576` raises the default 32-byte limit on decoded strings, so that
+/// buffers such as `readlink(2)` results are not truncated with a `...`.
+const STRACE_FLAGS: [&str; 7] = [
     "--absolute-timestamps=format:unix,precision:us",
     "--follow-forks",
     "-a",
     "0",
     "-v",
+    "-s",
+    "1048576",
 ];
 
 /// File descriptor strace writes its trace output to.
@@ -42,8 +46,8 @@ pub(crate) const TRACE_FD: libc::c_int = 3;
 /// arguments, but under `strace`.
 ///
 /// The returned command executes `strace --absolute-timestamps=format:unix,precision:us
-/// --follow-forks -a 0 -v <program> <args...>`.  The working directory and
-/// environment of `cmd` are copied over to the wrapped command.
+/// --follow-forks -a 0 -v -s 1048576 <program> <args...>`.  The working
+/// directory and environment of `cmd` are copied over to the wrapped command.
 ///
 /// Note that [`crate::Event`] only parses lines that carry a pid.
 /// `strace` prints a pid on every line, including those of the top-level
@@ -248,6 +252,8 @@ mod tests {
                 OsStr::new("-a"),
                 OsStr::new("0"),
                 OsStr::new("-v"),
+                OsStr::new("-s"),
+                OsStr::new("1048576"),
                 OsStr::new("echo"),
                 OsStr::new("hello"),
             ]
@@ -257,7 +263,7 @@ mod tests {
     #[test]
     fn no_args() {
         let wrapped = under_strace(Command::new("true"));
-        assert_eq!(wrapped.get_args().collect::<Vec<_>>().len(), 6);
+        assert_eq!(wrapped.get_args().collect::<Vec<_>>().len(), 8);
     }
 
     #[test]
@@ -273,6 +279,8 @@ mod tests {
                 OsStr::new("-a"),
                 OsStr::new("0"),
                 OsStr::new("-v"),
+                OsStr::new("-s"),
+                OsStr::new("1048576"),
                 OsStr::new("-o"),
                 OsStr::new("/dev/fd/3"),
                 OsStr::new("echo"),

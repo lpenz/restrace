@@ -211,8 +211,8 @@ async fn parses_read() {
             restrace::Action::Read(read) => read.buf.decoded(),
             _ => None,
         })
-        .find(|buf| !buf.0.is_empty())
-        .expect("expected a parsed read(2) with a decoded buffer");
+        .find(|buf| buf.0 == b"hi\n")
+        .expect("expected a parsed read(2) with the pipe bytes");
     assert_eq!(buf.0, b"hi\n");
 }
 
@@ -232,8 +232,8 @@ async fn parses_write() {
             restrace::Action::Write(write) => write.buf.decoded(),
             _ => None,
         })
-        .find(|buf| !buf.0.is_empty())
-        .expect("expected a parsed write(2) with a decoded buffer");
+        .find(|buf| buf.0 == b"hi\n")
+        .expect("expected a parsed write(2) with the buffer bytes");
     assert_eq!(buf.0, b"hi\n");
 }
 
