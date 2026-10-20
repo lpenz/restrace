@@ -453,6 +453,42 @@ async fn parses_sendfile() {
     assert_eq!(offset.moved_to, Some(5));
 }
 
+/// Runs a `stat(1)` call, which glibc implements with `statx(2)` on modern
+/// systems, and checks that the call parses as `Action::Statx` with the
+/// buffer decoded.
+///
+/// No common shell builtin issues `statx` directly, so this test needs a
+/// `stat` binary on top of `strace`; it skips itself when either is missing.
+#[::tokio::test]
+async fn parses_statx() {
+    if !strace_available() {
+        return;
+    }
+    let lines = trace_with(
+        {
+            let mut cmd = Command::new("stat");
+            cmd.arg("/etc/hostname");
+            cmd
+        },
+        ["-e", "trace=statx"],
+    )
+    .await;
+
+    let statx = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Statx(statx) => Some(statx),
+            _ => None,
+        })
+        .expect("expected a parsed statx(2)");
+    let buf = statx
+        .buf
+        .decoded()
+        .expect("expected a decoded statx buffer");
+    assert!(buf.blksize > 0, "expected a decoded block size");
+    assert!(buf.size.is_some(), "expected a decoded size");
+}
+
 #[::tokio::test]
 async fn exits_with_code() {
     if !strace_available() {

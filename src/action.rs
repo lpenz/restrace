@@ -10,7 +10,8 @@ use crate::syscalls::{
     Faccessat, Faccessat2, Fchdir, Fork, Fstat, Generic, Getdents, Getdents64, Link, Linkat, Lstat,
     Mkdir, Mkdirat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv,
     Preadv2, Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2,
-    Rmdir, Sendfile, Splice, Stat, Symlink, Symlinkat, Unlink, Unlinkat, Vfork, Write, Writev,
+    Rmdir, Sendfile, Splice, Stat, Statx, Symlink, Symlinkat, Unlink, Unlinkat, Vfork, Write,
+    Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -114,6 +115,8 @@ pub enum Action {
     Splice(Splice),
     /// A `stat(2)` call.
     Stat(Stat),
+    /// A `statx(2)` call.
+    Statx(Box<Statx>),
     /// A `symlink(2)` call.
     Symlink(Symlink),
     /// A `symlinkat(2)` call.
@@ -182,6 +185,7 @@ impl fmt::Display for Action {
             Self::Sendfile(syscall) => syscall.fmt(f),
             Self::Splice(syscall) => syscall.fmt(f),
             Self::Stat(syscall) => syscall.fmt(f),
+            Self::Statx(syscall) => syscall.fmt(f),
             Self::Symlink(syscall) => syscall.fmt(f),
             Self::Symlinkat(syscall) => syscall.fmt(f),
             Self::Unlink(syscall) => syscall.fmt(f),
@@ -339,6 +343,9 @@ impl FromStr for Action {
         if let Ok(syscall) = Stat::from_str(s) {
             return Ok(Self::Stat(syscall));
         }
+        if let Ok(syscall) = Statx::from_str(s) {
+            return Ok(Self::Statx(Box::new(syscall)));
+        }
         if let Ok(syscall) = Symlink::from_str(s) {
             return Ok(Self::Symlink(syscall));
         }
@@ -417,6 +424,7 @@ mod tests {
         let is_sendfile: fn(&Action) -> bool = |s| matches!(s, Action::Sendfile(_));
         let is_splice: fn(&Action) -> bool = |s| matches!(s, Action::Splice(_));
         let is_stat: fn(&Action) -> bool = |s| matches!(s, Action::Stat(_));
+        let is_statx: fn(&Action) -> bool = |s| matches!(s, Action::Statx(_));
         let is_symlink: fn(&Action) -> bool = |s| matches!(s, Action::Symlink(_));
         let is_symlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Symlinkat(_));
         let is_unlink: fn(&Action) -> bool = |s| matches!(s, Action::Unlink(_));
@@ -526,6 +534,11 @@ mod tests {
                 is_splice,
             ),
             ("stat(\"/etc/hostname\", 0x7ffd684fe7b0) = 0", is_stat),
+            (
+                "statx(AT_FDCWD, \"/f\", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffd684fe7b0) = \
+                 -1 ENOENT",
+                is_statx,
+            ),
             ("symlink(\"t\", \"l\") = 0", is_symlink),
             ("symlinkat(\"t\", AT_FDCWD, \"l\") = 0", is_symlinkat),
             ("unlink(\"/f\") = 0", is_unlink),
@@ -600,6 +613,11 @@ mod tests {
             "sendfile(4, 3, [0 => 10], 100) = 10",
             "sendfile(1, 3, NULL, 100) = 100",
             "stat(\"/etc/hostname\", 0x7ffd684fe7b0) = 0",
+            "statx(AT_FDCWD, \"/f\", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffd684fe7b0) = -1 ENOENT",
+            "statx(AT_FDCWD, \"/f\", AT_STATX_DONT_SYNC|AT_EMPTY_PATH, STATX_BASIC_STATS, \
+             {stx_mask=STATX_SIZE, stx_blksize=4096, stx_attributes=0, stx_size=8, \
+             stx_attributes_mask=0, stx_rdev_major=0, stx_rdev_minor=0, stx_dev_major=0, \
+             stx_dev_minor=30}) = -1 EINVAL",
             "spill(0x1000, -7, \"a, b\") = 0",
             "+++ exited with 3 +++",
             "+++ killed by SIGSEGV (core dumped) +++",

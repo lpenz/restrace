@@ -11,13 +11,19 @@
 //! named bit is set, remaining unnamed bits are printed in hexadecimal. When
 //! no named bit is set, `strace` prints the unnamed bits as hexadecimal
 //! followed by a comment naming the flag family, such as
-//! `0x2000 /* AT_??? */`; `dflt` reproduces that comment.
+//! `0x2000 /* AT_??? */`; `dflt` reproduces that comment. Entries are matched
+//! greedily in table order and their bits cleared as they are printed, so a
+//! composite entry such as `STATX_ALL` suppresses the individual bits it
+//! covers.
 
 use super::parse::{self, ParseError};
 use std::fmt;
 
 /// Writes `value` as the names in `names` joined by `|`, or `0` when no bit
-/// is set. Unnamed bits are appended as `0x`-prefixed hexadecimal; when no
+/// is set. Named bits are matched greedily in table order and cleared from
+/// the value as they are printed, so a composite entry such as `STATX_ALL`
+/// suppresses the individual bits it covers, the way `strace`'s flag printer
+/// works. Unnamed bits are appended as `0x`-prefixed hexadecimal; when no
 /// named bit matched at all, `dflt` is appended in a `/* ... */` comment, as
 /// `strace` does.
 pub(crate) fn display(
@@ -29,21 +35,22 @@ pub(crate) fn display(
     if value == 0 {
         return f.write_str("0");
     }
+    let mut remaining = value;
     let mut separator = "";
     let mut known = 0u32;
     for &(bit, name) in names {
-        if bit != 0 && value & bit == bit {
+        if bit != 0 && remaining & bit == bit {
             write!(f, "{separator}{name}")?;
             separator = "|";
+            remaining &= !bit;
             known |= bit;
         }
     }
-    let unknown = value & !known;
-    if unknown != 0 {
+    if remaining != 0 {
         if known == 0 && !dflt.is_empty() {
-            write!(f, "0x{unknown:x} /* {dflt} */")?;
+            write!(f, "0x{remaining:x} /* {dflt} */")?;
         } else {
-            write!(f, "{separator}0x{unknown:x}")?;
+            write!(f, "{separator}0x{remaining:x}")?;
         }
     }
     Ok(())
@@ -86,12 +93,34 @@ mod tests {
 
     const NAMES: &[(u32, &str)] = &[(0o400, "AT_SYMLINK_FOLLOW"), (0o1000, "AT_EMPTY_PATH")];
 
+    /// A table with a composite entry, in the style of `strace`'s
+    /// `statx_masks`.
+    const COMPOSITE: &[(u32, &str)] = &[
+        (0x7, "ALL_BITS"),
+        (0x3, "FIRST_TWO"),
+        (0x1, "BIT_ONE"),
+        (0x2, "BIT_TWO"),
+        (0x4, "BIT_THREE"),
+        (0x8, "BIT_FOUR"),
+    ];
+
     /// Formats a value with the test [`NAMES`] into a `String`.
     fn to_string(value: u32) -> String {
         struct Wrap(u32);
         impl fmt::Display for Wrap {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 display(f, self.0, NAMES, "AT_???")
+            }
+        }
+        Wrap(value).to_string()
+    }
+
+    /// Formats a value with the test [`COMPOSITE`] into a `String`.
+    fn to_string_composite(value: u32) -> String {
+        struct Wrap(u32);
+        impl fmt::Display for Wrap {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                display(f, self.0, COMPOSITE, "T_???")
             }
         }
         Wrap(value).to_string()
@@ -106,6 +135,14 @@ mod tests {
     fn display_named() {
         assert_eq!(to_string(0o400), "AT_SYMLINK_FOLLOW");
         assert_eq!(to_string(0o400 | 0o1000), "AT_SYMLINK_FOLLOW|AT_EMPTY_PATH");
+    }
+
+    #[test]
+    fn display_composite_clears_covered_bits() {
+        assert_eq!(to_string_composite(0x7), "ALL_BITS");
+        assert_eq!(to_string_composite(0x3), "FIRST_TWO");
+        assert_eq!(to_string_composite(0x7 | 0x8), "ALL_BITS|BIT_FOUR");
+        assert_eq!(to_string_composite(0x2 | 0x8), "BIT_TWO|BIT_FOUR");
     }
 
     #[test]
