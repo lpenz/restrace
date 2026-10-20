@@ -7,6 +7,7 @@
 //! [`pwritev(2)`]: https://man7.org/linux/man-pages/man2/pwritev.2.html
 
 use super::buffer::Buffer;
+use super::fd::Fd;
 use super::iovec::IovecList;
 use super::lenresult::LenResult;
 use super::parse::{self, ParseError};
@@ -26,8 +27,9 @@ use std::str::FromStr;
 /// `fd` unchanged; `offset` names the position the write starts at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pwritev {
-    /// File descriptor the call wrote to.
-    pub fd: i32,
+    /// File descriptor the call wrote to, with the path `strace` resolved for
+    /// it when run with `-y`.
+    pub fd: Fd,
     /// The buffers the call wrote from, or the raw address of the iov array
     /// when `strace` could not read it.
     pub iov: Buffer<IovecList>,
@@ -53,7 +55,7 @@ impl Pwritev {
         raw_result: i64,
     ) -> Self {
         Self {
-            fd,
+            fd: Fd::new(fd),
             iov,
             iovcnt,
             offset,
@@ -89,7 +91,7 @@ impl FromStr for Pwritev {
         }
         let fd = parts[0]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd", parts[0]))?;
         let iov = super::buffer::parse(parts[1].trim())?;
         let iovcnt = parts[2]
@@ -184,7 +186,7 @@ mod tests {
     #[test]
     fn parse_success() {
         let call = Pwritev::from_str(SUCCESS).unwrap();
-        assert_eq!(call.fd, 3);
+        assert_eq!(call.fd, Fd::new(3));
         assert_eq!(
             call.iov,
             list(vec![(b"abcd", 4), (b"efghij", 16), (b"", 8)])
@@ -207,7 +209,7 @@ mod tests {
         let line = "pwritev(99, [{iov_base=0x7f8cc17fc210, iov_len=8}], 1, 512) = -1 EBADF \
                     (Bad file descriptor)";
         let call = Pwritev::from_str(line).unwrap();
-        assert_eq!(call.fd, 99);
+        assert_eq!(call.fd, Fd::new(99));
         assert_eq!(call.result, LenResult::Errno(Errno::EBADF));
         assert_eq!(
             call.to_string(),

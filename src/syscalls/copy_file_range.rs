@@ -7,6 +7,7 @@
 //! [`copy_file_range(2)`]: https://man7.org/linux/man-pages/man2/copy_file_range.2.html
 
 use super::buffer::Buffer;
+use super::fd::Fd;
 use super::indirect::Indirect;
 use super::lenresult::LenResult;
 use super::parse::{self, ParseError};
@@ -25,13 +26,15 @@ use std::str::FromStr;
 /// read from and written back to `*off_in`. Similarly for `off_out`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CopyFileRange {
-    /// File descriptor to copy data from.
-    pub fd_in: i32,
+    /// File descriptor to copy data from, with the path `strace` resolved for
+    /// it when run with `-y`.
+    pub fd_in: Fd,
     /// Input file offset pointer, printed as `NULL`, an address, or
     /// `[value]`/`[value => new]` when decoded.
     pub off_in: Buffer<Indirect<i64>>,
-    /// File descriptor to copy data to.
-    pub fd_out: i32,
+    /// File descriptor to copy data to, with the path `strace` resolved for it
+    /// when run with `-y`.
+    pub fd_out: Fd,
     /// Output file offset pointer, printed as for `off_in`.
     pub off_out: Buffer<Indirect<i64>>,
     /// Number of bytes to copy.
@@ -58,9 +61,9 @@ impl CopyFileRange {
         raw_result: i64,
     ) -> Self {
         Self {
-            fd_in,
+            fd_in: Fd::new(fd_in),
             off_in,
-            fd_out,
+            fd_out: Fd::new(fd_out),
             off_out,
             len,
             flags,
@@ -96,12 +99,12 @@ impl FromStr for CopyFileRange {
         }
         let fd_in = parts[0]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd_in", parts[0]))?;
         let off_in = super::buffer::parse(parts[1].trim())?;
         let fd_out = parts[2]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd_out", parts[2]))?;
         let off_out = super::buffer::parse(parts[3].trim())?;
         let len = parts[4]
@@ -160,8 +163,8 @@ mod tests {
     fn parse_success() {
         let s = "copy_file_range(3, [0], 4, [0], 5, 0) = 5";
         let call = CopyFileRange::from_str(s).unwrap();
-        assert_eq!(call.fd_in, 3);
-        assert_eq!(call.fd_out, 4);
+        assert_eq!(call.fd_in, Fd::new(3));
+        assert_eq!(call.fd_out, Fd::new(4));
         assert_eq!(call.len, 5);
         assert_eq!(call.flags, 0);
         assert_eq!(call.result, LenResult::Len(5));

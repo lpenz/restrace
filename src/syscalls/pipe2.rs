@@ -6,6 +6,7 @@
 //!
 //! [`pipe2(2)`]: https://man7.org/linux/man-pages/man2/pipe.2.html
 
+use super::fd::Fd;
 use super::flags;
 use super::parse::{self, ParseError};
 use super::result::OkResult;
@@ -24,15 +25,16 @@ const NAMED_FLAGS: &[(u32, &str)] = &[
 /// ```text
 /// int pipe2(int pipefd[2], int flags);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pipe2 {
     /// The two file descriptors of the pipe: the read end first, then the
     /// write end.
     ///
     /// Only present with the values the kernel wrote on success; a failure
     /// leaves the array untouched, so the parser only reports the successful
-    /// form.
-    pub pipefd: [i32; 2],
+    /// form. With `-y`, `strace` annotates each descriptor with the path it
+    /// resolved, which is kept in [`Fd::path`].
+    pub pipefd: [Fd; 2],
     /// Flags, the `flags` argument; see [`Pipe2Flags`].
     pub flags: Pipe2Flags,
     /// Return value: zero on success, or the errno of the failure.
@@ -45,7 +47,7 @@ impl Pipe2 {
     /// `raw_result` is the value the kernel reported for the call: 0 on
     /// success, or `-errno` on failure.
     #[must_use]
-    pub fn from_raw(pipefd: [i32; 2], flags: Pipe2Flags, raw_result: i64) -> Self {
+    pub fn from_raw(pipefd: [Fd; 2], flags: Pipe2Flags, raw_result: i64) -> Self {
         Self {
             pipefd,
             flags,
@@ -89,22 +91,20 @@ impl FromStr for Pipe2 {
 }
 
 /// Parses the `[fd0, fd1]` array argument of `pipe2(2)`.
-fn parse_pipefd(input: &str) -> Result<[i32; 2], ParseError> {
+fn parse_pipefd(input: &str) -> Result<[Fd; 2], ParseError> {
     let error = || ParseError::new("pipefd", input);
     let body = input
         .trim()
         .strip_prefix('[')
         .and_then(|s| s.strip_suffix(']'))
         .ok_or_else(error)?;
-    let mut fds = body.split(',');
-    let first = fds.next().ok_or_else(error)?.trim();
-    let second = fds.next().ok_or_else(error)?.trim();
-    if fds.next().is_some() {
+    let parts = parse::split_args(body);
+    if parts.len() != 2 {
         return Err(error());
     }
     Ok([
-        first.parse::<i32>().map_err(|_| error())?,
-        second.parse::<i32>().map_err(|_| error())?,
+        parts[0].trim().parse::<Fd>().map_err(|_| error())?,
+        parts[1].trim().parse::<Fd>().map_err(|_| error())?,
     ])
 }
 
@@ -142,20 +142,24 @@ mod tests {
     use super::*;
     use crate::syscalls::errno::Errno;
 
+    fn fds(a: i32, b: i32) -> [Fd; 2] {
+        [Fd::new(a), Fd::new(b)]
+    }
+
     #[test]
     fn display_success() {
-        let pipe2 = Pipe2::from_raw([3, 4], Pipe2Flags(0), 0);
+        let pipe2 = Pipe2::from_raw(fds(3, 4), Pipe2Flags(0), 0);
         assert_eq!(pipe2.to_string(), "pipe2([3, 4], 0) = 0");
         assert!(pipe2.result.is_ok());
     }
 
     #[test]
     fn display_flags() {
-        let pipe2 = Pipe2::from_raw([5, 6], Pipe2Flags::O_CLOEXEC, 0);
+        let pipe2 = Pipe2::from_raw(fds(5, 6), Pipe2Flags::O_CLOEXEC, 0);
         assert_eq!(pipe2.to_string(), "pipe2([5, 6], O_CLOEXEC) = 0");
 
         let all = Pipe2Flags(0o4000 | 0o40000 | 0o2000000);
-        let pipe2 = Pipe2::from_raw([7, 8], all, 0);
+        let pipe2 = Pipe2::from_raw(fds(7, 8), all, 0);
         assert_eq!(
             pipe2.to_string(),
             "pipe2([7, 8], O_NONBLOCK|O_DIRECT|O_CLOEXEC) = 0"
@@ -164,7 +168,7 @@ mod tests {
 
     #[test]
     fn display_failure() {
-        let pipe2 = Pipe2::from_raw([3, 4], Pipe2Flags(0), -24);
+        let pipe2 = Pipe2::from_raw(fds(3, 4), Pipe2Flags(0), -24);
         assert_eq!(pipe2.to_string(), "pipe2([3, 4], 0) = -1 EMFILE");
         assert!(!pipe2.result.is_ok());
     }
@@ -174,16 +178,27 @@ mod tests {
         let pipe2 = Pipe2::from_str("pipe2([3, 4], O_NONBLOCK|O_CLOEXEC) = 0").unwrap();
         assert_eq!(
             pipe2,
-            Pipe2::from_raw([3, 4], Pipe2Flags(0o4000 | 0o2000000), 0)
+            Pipe2::from_raw(fds(3, 4), Pipe2Flags(0o4000 | 0o2000000), 0)
         );
-        assert_eq!(pipe2.pipefd, [3, 4]);
+        assert_eq!(pipe2.pipefd, fds(3, 4));
         assert_eq!(pipe2.flags, Pipe2Flags(0o4000 | 0o2000000));
+    }
+
+    #[test]
+    fn parse_annotated() {
+        let pipe2 = Pipe2::from_str("pipe2([4<pipe:[846748]>, 5<pipe:[846748]>], 0) = 0").unwrap();
+        assert_eq!(pipe2.pipefd[0].fd(), 4);
+        assert_eq!(
+            pipe2.pipefd[0].path().map(|p| p.to_str().unwrap()),
+            Some("pipe:[846748]")
+        );
+        assert_eq!(pipe2.pipefd[1].fd(), 5);
     }
 
     #[test]
     fn parse_failure() {
         let pipe2 = Pipe2::from_str("pipe2([9, 10], 0) = -1 EMFILE").unwrap();
-        assert_eq!(pipe2.pipefd, [9, 10]);
+        assert_eq!(pipe2.pipefd, fds(9, 10));
         assert_eq!(pipe2.flags, Pipe2Flags(0));
         assert_eq!(pipe2.result, OkResult::Errno(Errno::EMFILE));
     }
@@ -207,6 +222,7 @@ mod tests {
             "pipe2([3, 4], 0) = 0",
             "pipe2([5, 6], O_CLOEXEC) = 0",
             "pipe2([7, 8], O_NONBLOCK|O_DIRECT|O_CLOEXEC) = 0",
+            "pipe2([4<pipe:[846748]>, 5<pipe:[846748]>], 0) = 0",
             "pipe2([3, 4], 0) = -1 EMFILE",
             "pipe2([3, 4], O_NONBLOCK|0x1) = -1 9999",
         ] {

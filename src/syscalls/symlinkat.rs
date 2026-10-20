@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn display_dirfd_and_failure() {
-        let symlinkat = Symlinkat::from_raw("target", DirFd(5), "link", -17);
+        let symlinkat = Symlinkat::from_raw("target", DirFd::new(5), "link", -17);
         assert_eq!(
             symlinkat.to_string(),
             "symlinkat(\"target\", 5, \"link\") = -1 EEXIST"
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn parse_dirfd_and_failure() {
         let symlinkat = Symlinkat::from_str("symlinkat(\"t\", 5, \"l\") = -1 EACCES").unwrap();
-        assert_eq!(symlinkat.newdirfd, DirFd(5));
+        assert_eq!(symlinkat.newdirfd, DirFd::new(5));
         assert_eq!(symlinkat.result, OkResult::Errno(Errno::EACCES));
     }
 

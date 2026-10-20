@@ -61,9 +61,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `Indirect` offset value type.
 - A typed `copy_file_range(2)` record, carried as the `Action::CopyFileRange`
   variant, with the `Indirect` offset value types.
+- A new `Fd` argument type that carries the path `strace` resolves for a file
+  descriptor when run with `-y`, such as the `3</tmp/file>` of
+  `read(3</tmp/file>, ...)`. The file-descriptor arguments of the records above
+  and the `Fd` of `FdResult` now use it, and `DirFd` gained the same optional
+  path so the `*at` records round-trip `AT_FDCWD</cwd>` and `4</dir>`. The
+  `pipe2(2)` record's descriptor array uses it too.
 
 ### Changed
 
+- `strace` now always runs with `-y`, so file descriptors and the current
+  working directory are annotated with their resolved paths.
 - The `Indirect` value type gained a `moved_to` field, so a value that `strace`
   reads through a pointer again on exit and the call changed — such as the
   offset of `sendfile(2)` — round-trips as `[0 => 10]`. The parser accepts

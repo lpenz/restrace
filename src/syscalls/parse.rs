@@ -167,6 +167,38 @@ pub(crate) fn strip_comment(input: &str) -> &str {
     }
 }
 
+/// Splits the `<...>` associated-info annotation that `strace` appends with
+/// `-y` from an argument, returning the bare argument and the annotated text
+/// inside the angle brackets, if any.
+///
+/// `strace` formats an annotated file descriptor as `3</path/to/file>` and,
+/// with `-yy`, may nest more associated info inside the brackets, such as the
+/// device of a character file (`3</dev/null<char 1:3>>`). A marker that
+/// `strace` appends after the closing bracket, such as the `(deleted)` of a
+/// removed file, is dropped.
+pub(crate) fn split_annotation(input: &str) -> (&str, Option<&str>) {
+    let input = input.trim();
+    let Some(open) = input.find('<') else {
+        return (input, None);
+    };
+    let value = input[..open].trim_end();
+    let rest = &input[open + 1..];
+    let mut depth = 1u32;
+    for (i, c) in rest.char_indices() {
+        match c {
+            '<' => depth += 1,
+            '>' => {
+                depth -= 1;
+                if depth == 0 {
+                    return (value, Some(&rest[..i]));
+                }
+            }
+            _ => {}
+        }
+    }
+    (input, None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,5 +314,41 @@ mod tests {
     fn strip_comment_keeps_plain() {
         assert_eq!(strip_comment("1754766014"), "1754766014");
         assert_eq!(strip_comment(""), "");
+    }
+
+    #[test]
+    fn split_annotation_plain() {
+        assert_eq!(split_annotation("3"), ("3", None));
+        assert_eq!(split_annotation("AT_FDCWD"), ("AT_FDCWD", None));
+    }
+
+    #[test]
+    fn split_annotation_path() {
+        assert_eq!(split_annotation("3</tmp/file>"), ("3", Some("/tmp/file")));
+        assert_eq!(
+            split_annotation("AT_FDCWD</home/user>"),
+            ("AT_FDCWD", Some("/home/user"))
+        );
+    }
+
+    #[test]
+    fn split_annotation_nested_and_suffix() {
+        assert_eq!(
+            split_annotation("3</dev/null<char 1:3>>"),
+            ("3", Some("/dev/null<char 1:3>"))
+        );
+        assert_eq!(
+            split_annotation("3</tmp/gone>(deleted)"),
+            ("3", Some("/tmp/gone"))
+        );
+        assert_eq!(split_annotation("3<pipe:[123]>"), ("3", Some("pipe:[123]")));
+    }
+
+    #[test]
+    fn split_annotation_malformed() {
+        assert_eq!(
+            split_annotation("3</tmp/unclosed"),
+            ("3</tmp/unclosed", None)
+        );
     }
 }

@@ -6,7 +6,7 @@
 //!
 //! [`dup3(2)`]: https://man7.org/linux/man-pages/man2/dup3.2.html
 
-use super::fd::FdResult;
+use super::fd::{Fd, FdResult};
 use super::flags;
 use super::parse::{self, ParseError};
 use std::fmt;
@@ -20,12 +20,14 @@ const NAMED_FLAGS: &[(u32, &str)] = &[(Dup3Flags::O_CLOEXEC.0, "O_CLOEXEC")];
 /// ```text
 /// int dup3(int oldfd, int newfd, int flags);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dup3 {
-    /// The file descriptor to duplicate.
-    pub oldfd: i32,
-    /// The file descriptor to make a copy of `oldfd`.
-    pub newfd: i32,
+    /// The file descriptor to duplicate, with the path `strace` resolved for
+    /// it when run with `-y`.
+    pub oldfd: Fd,
+    /// The file descriptor to make a copy of `oldfd`, with the path `strace`
+    /// resolved for it when run with `-y`.
+    pub newfd: Fd,
     /// Flags, the `flags` argument; see [`Dup3Flags`].
     pub flags: Dup3Flags,
     /// Return value: the new file descriptor, or the errno that caused the
@@ -41,8 +43,8 @@ impl Dup3 {
     #[must_use]
     pub fn from_raw(oldfd: i32, newfd: i32, flags: Dup3Flags, raw_result: i64) -> Self {
         Self {
-            oldfd,
-            newfd,
+            oldfd: Fd::new(oldfd),
+            newfd: Fd::new(newfd),
             flags,
             result: FdResult::from_raw(raw_result),
         }
@@ -73,8 +75,8 @@ impl FromStr for Dup3 {
         if parts.len() != 3 {
             return Err(ParseError::new("dup3 arguments", args));
         }
-        let oldfd = parts[0].trim().parse::<i32>().map_err(|_| syntax())?;
-        let newfd = parts[1].trim().parse::<i32>().map_err(|_| syntax())?;
+        let oldfd = parts[0].trim().parse::<Fd>().map_err(|_| syntax())?;
+        let newfd = parts[1].trim().parse::<Fd>().map_err(|_| syntax())?;
         let flags = Dup3Flags::from_str(parts[2].trim())?;
         Ok(Self {
             oldfd,
@@ -141,16 +143,16 @@ mod tests {
     fn parse_success() {
         let dup3 = Dup3::from_str("dup3(0, 4, O_CLOEXEC) = 4").unwrap();
         assert_eq!(dup3, Dup3::from_raw(0, 4, Dup3Flags::O_CLOEXEC, 4));
-        assert_eq!(dup3.oldfd, 0);
-        assert_eq!(dup3.newfd, 4);
+        assert_eq!(dup3.oldfd, Fd::new(0));
+        assert_eq!(dup3.newfd, Fd::new(4));
         assert_eq!(dup3.flags, Dup3Flags::O_CLOEXEC);
     }
 
     #[test]
     fn parse_failure() {
         let dup3 = Dup3::from_str("dup3(1, 3, 0) = -1 EBADF").unwrap();
-        assert_eq!(dup3.oldfd, 1);
-        assert_eq!(dup3.newfd, 3);
+        assert_eq!(dup3.oldfd, Fd::new(1));
+        assert_eq!(dup3.newfd, Fd::new(3));
         assert_eq!(dup3.flags, Dup3Flags(0));
         assert_eq!(dup3.result, FdResult::Errno(Errno::EBADF));
     }

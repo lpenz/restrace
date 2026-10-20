@@ -7,6 +7,7 @@
 //! [`fstat(2)`]: https://man7.org/linux/man-pages/man2/fstat.2.html
 
 use super::buffer::Buffer;
+use super::fd::Fd;
 use super::parse::{self, ParseError};
 use super::statbuf::StatBuf;
 use std::fmt;
@@ -19,8 +20,9 @@ use std::str::FromStr;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fstat {
-    /// File descriptor to stat.
-    pub fd: i32,
+    /// File descriptor to stat, with the path `strace` resolved for it when
+    /// run with `-y`.
+    pub fd: Fd,
     /// The `struct stat` the call filled in, or the raw address of the buffer
     /// when `strace` could not decode it, such as after a failure.
     pub buf: Buffer<StatBuf>,
@@ -36,7 +38,7 @@ impl Fstat {
     #[must_use]
     pub fn from_raw(fd: i32, buf: Buffer<StatBuf>, raw_result: i64) -> Self {
         Self {
-            fd,
+            fd: Fd::new(fd),
             buf,
             result: super::result::OkResult::from_raw(raw_result),
         }
@@ -65,7 +67,7 @@ impl FromStr for Fstat {
         }
         let fd = parts[0]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd", parts[0]))?;
         let buf = super::buffer::parse(parts[1].trim())?;
         let result = super::result::OkResult::from_str(result)?;
@@ -130,7 +132,7 @@ mod tests {
              st_ctime_nsec=986788270}) = 0",
         )
         .unwrap();
-        assert_eq!(fstat.fd, 3);
+        assert_eq!(fstat.fd, Fd::new(3));
         assert_eq!(fstat.result, OkResult::Ok);
         assert!(matches!(fstat.buf, Buffer::Decoded(_)));
     }

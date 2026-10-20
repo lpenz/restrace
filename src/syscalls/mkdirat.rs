@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn display_dirfd_and_failure() {
-        let mkdirat = Mkdirat::from_raw(DirFd(4), "sub", Mode(0o700), -13);
+        let mkdirat = Mkdirat::from_raw(DirFd::new(4), "sub", Mode(0o700), -13);
         assert_eq!(mkdirat.to_string(), "mkdirat(4, \"sub\", 0700) = -1 EACCES");
         assert!(!mkdirat.result.is_ok());
     }
@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn parse_failure() {
         let mkdirat = Mkdirat::from_str("mkdirat(4, \"sub\", 0700) = -1 ENOENT").unwrap();
-        assert_eq!(mkdirat.dirfd, DirFd(4));
+        assert_eq!(mkdirat.dirfd, DirFd::new(4));
         assert_eq!(mkdirat.mode, Mode(0o700));
         assert_eq!(mkdirat.result, OkResult::Errno(Errno::ENOENT));
     }

@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn display_removedir_failure() {
-        let unlinkat = Unlinkat::from_raw(DirFd(4), "dir", UnlinkatFlags::AT_REMOVEDIR, -20);
+        let unlinkat = Unlinkat::from_raw(DirFd::new(4), "dir", UnlinkatFlags::AT_REMOVEDIR, -20);
         assert_eq!(
             unlinkat.to_string(),
             "unlinkat(4, \"dir\", AT_REMOVEDIR) = -1 ENOTDIR"
@@ -164,7 +164,7 @@ mod tests {
     fn parse_removedir() {
         let unlinkat =
             Unlinkat::from_str("unlinkat(3, \"dir\", AT_REMOVEDIR) = -1 ENOENT").unwrap();
-        assert_eq!(unlinkat.dirfd, DirFd(3));
+        assert_eq!(unlinkat.dirfd, DirFd::new(3));
         assert_eq!(unlinkat.flags, UnlinkatFlags::AT_REMOVEDIR);
         assert_eq!(unlinkat.result, OkResult::Errno(Errno::ENOENT));
     }

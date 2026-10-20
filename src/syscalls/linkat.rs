@@ -176,9 +176,9 @@ mod tests {
     #[test]
     fn display_flags_and_failure() {
         let linkat = Linkat::from_raw(
-            DirFd(3),
+            DirFd::new(3),
             "a",
-            DirFd(4),
+            DirFd::new(4),
             "b",
             LinkatFlags::AT_SYMLINK_FOLLOW,
             -1,
@@ -211,8 +211,8 @@ mod tests {
     #[test]
     fn parse_failure() {
         let linkat = Linkat::from_str("linkat(3, \"a\", 4, \"b\", 0) = -1 ENOENT").unwrap();
-        assert_eq!(linkat.olddirfd, DirFd(3));
-        assert_eq!(linkat.newdirfd, DirFd(4));
+        assert_eq!(linkat.olddirfd, DirFd::new(3));
+        assert_eq!(linkat.newdirfd, DirFd::new(4));
         assert_eq!(linkat.flags, LinkatFlags(0));
         assert_eq!(linkat.result, OkResult::Errno(Errno::ENOENT));
     }

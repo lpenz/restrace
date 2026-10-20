@@ -7,6 +7,7 @@
 //! [`sendfile(2)`]: https://man7.org/linux/man-pages/man2/sendfile.2.html
 
 use super::buffer::Buffer;
+use super::fd::Fd;
 use super::indirect::Indirect;
 use super::lenresult::LenResult;
 use super::parse::{self, ParseError};
@@ -26,10 +27,12 @@ use std::str::FromStr;
 /// address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sendfile {
-    /// File descriptor the call writes to.
-    pub out_fd: i32,
-    /// File descriptor the call reads from.
-    pub in_fd: i32,
+    /// File descriptor the call writes to, with the path `strace` resolved
+    /// for it when run with `-y`.
+    pub out_fd: Fd,
+    /// File descriptor the call reads from, with the path `strace` resolved
+    /// for it when run with `-y`.
+    pub in_fd: Fd,
     /// Offset the call reads from and advances, or `NULL` to read from and
     /// advance the file offset of `in_fd`.
     pub offset: Buffer<Indirect<u64>>,
@@ -54,8 +57,8 @@ impl Sendfile {
         raw_result: i64,
     ) -> Self {
         Self {
-            out_fd,
-            in_fd,
+            out_fd: Fd::new(out_fd),
+            in_fd: Fd::new(in_fd),
             offset,
             count,
             result: LenResult::from_raw(raw_result),
@@ -90,11 +93,11 @@ impl FromStr for Sendfile {
         }
         let out_fd = parts[0]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("out_fd", parts[0]))?;
         let in_fd = parts[1]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("in_fd", parts[1]))?;
         let offset = super::buffer::parse(parts[2].trim())?;
         let count = parts[3]
@@ -157,8 +160,8 @@ mod tests {
     fn parse_success() {
         let line = "sendfile(4, 3, [0 => 10], 100) = 10";
         let call = Sendfile::from_str(line).unwrap();
-        assert_eq!(call.out_fd, 4);
-        assert_eq!(call.in_fd, 3);
+        assert_eq!(call.out_fd, Fd::new(4));
+        assert_eq!(call.in_fd, Fd::new(3));
         assert_eq!(call.offset, moved(0, 10));
         assert_eq!(call.count, 100);
         assert_eq!(call.result, LenResult::Len(10));
@@ -168,8 +171,8 @@ mod tests {
     #[test]
     fn parse_success_old_strace_format() {
         let call = Sendfile::from_str("sendfile(4, 3, [0] => [10], 100) = 10").unwrap();
-        assert_eq!(call.out_fd, 4);
-        assert_eq!(call.in_fd, 3);
+        assert_eq!(call.out_fd, Fd::new(4));
+        assert_eq!(call.in_fd, Fd::new(3));
         assert_eq!(call.offset, moved(0, 10));
         assert_eq!(call.count, 100);
         assert_eq!(call.result, LenResult::Len(10));

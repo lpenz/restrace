@@ -6,7 +6,7 @@
 //!
 //! [`dup(2)`]: https://man7.org/linux/man-pages/man2/dup.2.html
 
-use super::fd::FdResult;
+use super::fd::{Fd, FdResult};
 use super::parse::ParseError;
 use std::fmt;
 use std::str::FromStr;
@@ -16,10 +16,11 @@ use std::str::FromStr;
 /// ```text
 /// int dup(int oldfd);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dup {
-    /// The file descriptor to duplicate.
-    pub oldfd: i32,
+    /// The file descriptor to duplicate, with the path `strace` resolved for
+    /// it when run with `-y`.
+    pub oldfd: Fd,
     /// Return value: the new file descriptor, or the errno that caused the
     /// failure.
     pub result: FdResult,
@@ -33,7 +34,7 @@ impl Dup {
     #[must_use]
     pub fn from_raw(oldfd: i32, raw_result: i64) -> Self {
         Self {
-            oldfd,
+            oldfd: Fd::new(oldfd),
             result: FdResult::from_raw(raw_result),
         }
     }
@@ -58,7 +59,7 @@ impl FromStr for Dup {
             .strip_prefix("dup(")
             .ok_or_else(syntax)?
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| syntax())?;
         Ok(Self {
             oldfd,
@@ -90,13 +91,13 @@ mod tests {
     fn parse_success() {
         let dup = Dup::from_str("dup(0) = 3").unwrap();
         assert_eq!(dup, Dup::from_raw(0, 3));
-        assert_eq!(dup.oldfd, 0);
+        assert_eq!(dup.oldfd, Fd::new(0));
     }
 
     #[test]
     fn parse_failure() {
         let dup = Dup::from_str("dup(3) = -1 EBADF").unwrap();
-        assert_eq!(dup.oldfd, 3);
+        assert_eq!(dup.oldfd, Fd::new(3));
         assert_eq!(dup.result, FdResult::Errno(Errno::EBADF));
     }
 

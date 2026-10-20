@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn display_failure() {
         let faccessat2 = Faccessat2::from_raw(
-            DirFd(4),
+            DirFd::new(4),
             "file",
             AccessMode::W_OK,
             FaccessatFlags::default(),
@@ -201,7 +201,7 @@ mod tests {
     fn parse_failure() {
         let faccessat2 =
             Faccessat2::from_str("faccessat2(4, \"file\", W_OK, 0) = -1 EACCES").unwrap();
-        assert_eq!(faccessat2.dirfd, DirFd(4));
+        assert_eq!(faccessat2.dirfd, DirFd::new(4));
         assert_eq!(faccessat2.mode, AccessMode::W_OK);
         assert_eq!(faccessat2.flags, FaccessatFlags(0));
         assert_eq!(faccessat2.result, OkResult::Errno(Errno::EACCES));

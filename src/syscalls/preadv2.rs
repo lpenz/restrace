@@ -7,6 +7,7 @@
 //! [`preadv2(2)`]: https://man7.org/linux/man-pages/man2/preadv2.2.html
 
 use super::buffer::Buffer;
+use super::fd::Fd;
 use super::flags;
 use super::iovec::IovecList;
 use super::lenresult::LenResult;
@@ -40,8 +41,9 @@ const NAMED_FLAGS: &[(u32, &str)] = &[
 /// with an empty base.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Preadv2 {
-    /// File descriptor the call read from.
-    pub fd: i32,
+    /// File descriptor the call read from, with the path `strace` resolved
+    /// for it when run with `-y`.
+    pub fd: Fd,
     /// The buffers the call read into, or the raw address of the iov array
     /// when `strace` could not read it. After a failure the bases are shown
     /// as addresses too, so the buffers carry no decoded bytes.
@@ -71,7 +73,7 @@ impl Preadv2 {
         raw_result: i64,
     ) -> Self {
         Self {
-            fd,
+            fd: Fd::new(fd),
             iov,
             iovcnt,
             offset,
@@ -108,7 +110,7 @@ impl FromStr for Preadv2 {
         }
         let fd = parts[0]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd", parts[0]))?;
         let iov = super::buffer::parse(parts[1].trim())?;
         let iovcnt = parts[2]
@@ -253,7 +255,7 @@ mod tests {
     fn parse_success() {
         let line = "preadv2(3, [{iov_base=\"carb\", iov_len=4}], 1, 0, RWF_NOWAIT) = 4";
         let call = Preadv2::from_str(line).unwrap();
-        assert_eq!(call.fd, 3);
+        assert_eq!(call.fd, Fd::new(3));
         assert_eq!(call.iov, list(vec![(b"carb", 4)]));
         assert_eq!(call.iovcnt, 1);
         assert_eq!(call.offset, 0);

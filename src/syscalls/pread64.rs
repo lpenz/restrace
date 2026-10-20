@@ -8,6 +8,7 @@
 
 use super::buffer::Buffer;
 use super::bytes::Bytes;
+use super::fd::Fd;
 use super::lenresult::LenResult;
 use super::parse::{self, ParseError};
 use std::fmt;
@@ -23,8 +24,9 @@ use std::str::FromStr;
 /// `fd` unchanged; `offset` names the position the read starts at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pread64 {
-    /// File descriptor the call read from.
-    pub fd: i32,
+    /// File descriptor the call read from, with the path `strace` resolved
+    /// for it when run with `-y`.
+    pub fd: Fd,
     /// The bytes the call read, or the raw address of the buffer when
     /// `strace` could not decode it, such as after a failure.
     pub buf: Buffer<Bytes>,
@@ -44,7 +46,7 @@ impl Pread64 {
     #[must_use]
     pub fn from_raw(fd: i32, buf: Buffer<Bytes>, count: u64, offset: i64, raw_result: i64) -> Self {
         Self {
-            fd,
+            fd: Fd::new(fd),
             buf,
             count,
             offset,
@@ -79,7 +81,7 @@ impl FromStr for Pread64 {
         }
         let fd = parts[0]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd", parts[0]))?;
         let buf = super::buffer::parse(parts[1].trim())?;
         let count = parts[2]
@@ -142,7 +144,7 @@ mod tests {
     fn parse_success() {
         let line = "pread64(3, \"carb\", 4, 0) = 4";
         let call = Pread64::from_str(line).unwrap();
-        assert_eq!(call.fd, 3);
+        assert_eq!(call.fd, Fd::new(3));
         assert_eq!(call.buf, decoded(b"carb"));
         assert_eq!(call.count, 4);
         assert_eq!(call.offset, 0);
@@ -154,7 +156,7 @@ mod tests {
     fn parse_failure() {
         let line = "pread64(3, 0x7ffc1234, 64, 512) = -1 EBADF";
         let call = Pread64::from_str(line).unwrap();
-        assert_eq!(call.fd, 3);
+        assert_eq!(call.fd, Fd::new(3));
         assert_eq!(call.buf, Buffer::<Bytes>::Address(0x7ffc1234));
         assert_eq!(call.count, 64);
         assert_eq!(call.offset, 512);

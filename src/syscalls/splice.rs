@@ -7,6 +7,7 @@
 //! [`splice(2)`]: https://man7.org/linux/man-pages/man2/splice.2.html
 
 use super::buffer::Buffer;
+use super::fd::Fd;
 use super::flags;
 use super::indirect::Indirect;
 use super::lenresult::LenResult;
@@ -34,12 +35,14 @@ const NAMED_FLAGS: &[(u32, &str)] = &[
 /// as `NULL` and one it cannot read as a raw address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Splice {
-    /// File descriptor the call reads from.
-    pub fd_in: i32,
+    /// File descriptor the call reads from, with the path `strace` resolved
+    /// for it when run with `-y`.
+    pub fd_in: Fd,
     /// Offset the call reads from, or `NULL` to read from the file offset.
     pub off_in: Buffer<Indirect<i64>>,
-    /// File descriptor the call writes to.
-    pub fd_out: i32,
+    /// File descriptor the call writes to, with the path `strace` resolved
+    /// for it when run with `-y`.
+    pub fd_out: Fd,
     /// Offset the call writes to, or `NULL` to write at the file offset.
     pub off_out: Buffer<Indirect<i64>>,
     /// Number of bytes to transfer.
@@ -67,9 +70,9 @@ impl Splice {
         raw_result: i64,
     ) -> Self {
         Self {
-            fd_in,
+            fd_in: Fd::new(fd_in),
             off_in,
-            fd_out,
+            fd_out: Fd::new(fd_out),
             off_out,
             len,
             flags,
@@ -105,12 +108,12 @@ impl FromStr for Splice {
         }
         let fd_in = parts[0]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd_in", parts[0]))?;
         let off_in = super::buffer::parse(parts[1].trim())?;
         let fd_out = parts[2]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd_out", parts[2]))?;
         let off_out = super::buffer::parse(parts[3].trim())?;
         let len = parts[4]
@@ -218,9 +221,9 @@ mod tests {
     fn parse_success() {
         let line = "splice(5, [5], 4, [10], 64, SPLICE_F_MOVE|SPLICE_F_MORE) = 64";
         let call = Splice::from_str(line).unwrap();
-        assert_eq!(call.fd_in, 5);
+        assert_eq!(call.fd_in, Fd::new(5));
         assert_eq!(call.off_in, value(5));
-        assert_eq!(call.fd_out, 4);
+        assert_eq!(call.fd_out, Fd::new(4));
         assert_eq!(call.off_out, value(10));
         assert_eq!(call.len, 64);
         assert_eq!(call.flags, SpliceFlags(0x5));

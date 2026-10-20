@@ -8,6 +8,7 @@
 
 use super::buffer::Buffer;
 use super::bytes::Bytes;
+use super::fd::Fd;
 use super::lenresult::LenResult;
 use super::parse::{self, ParseError};
 use std::fmt;
@@ -20,8 +21,9 @@ use std::str::FromStr;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Read {
-    /// File descriptor the call read from.
-    pub fd: i32,
+    /// File descriptor the call read from, with the path `strace` resolved for
+    /// it when run with `-y`.
+    pub fd: Fd,
     /// The bytes the call read, or the raw address of the buffer when
     /// `strace` could not decode it, such as after a failure.
     pub buf: Buffer<Bytes>,
@@ -39,7 +41,7 @@ impl Read {
     #[must_use]
     pub fn from_raw(fd: i32, buf: Buffer<Bytes>, count: u64, raw_result: i64) -> Self {
         Self {
-            fd,
+            fd: Fd::new(fd),
             buf,
             count,
             result: LenResult::from_raw(raw_result),
@@ -73,7 +75,7 @@ impl FromStr for Read {
         }
         let fd = parts[0]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd", parts[0]))?;
         let buf = super::buffer::parse(parts[1].trim())?;
         let count = parts[2]
@@ -128,7 +130,7 @@ mod tests {
     fn parse_success() {
         let line = "read(0, \"hi\\n\", 131072) = 3";
         let call = Read::from_str(line).unwrap();
-        assert_eq!(call.fd, 0);
+        assert_eq!(call.fd, Fd::new(0));
         assert_eq!(call.buf, decoded(b"hi\n"));
         assert_eq!(call.count, 131072);
         assert_eq!(call.result, LenResult::Len(3));
@@ -139,7 +141,7 @@ mod tests {
     fn parse_failure() {
         let line = "read(3, 0x7ffc1234, 64) = -1 EBADF";
         let call = Read::from_str(line).unwrap();
-        assert_eq!(call.fd, 3);
+        assert_eq!(call.fd, Fd::new(3));
         assert_eq!(call.buf, Buffer::<Bytes>::Address(0x7ffc1234));
         assert_eq!(call.count, 64);
         assert_eq!(call.result, LenResult::Errno(Errno::EBADF));
@@ -164,6 +166,7 @@ mod tests {
             "read(3, \"\\0015\", 8) = 2",
             "read(3, \"\\377\", 1) = 1",
             "read(0, \"a, b\", 5) = 5",
+            "read(3</tmp/in>, \"hi\\n\", 131072) = 3",
             "read(3, 0x7ffc1234, 64) = -1 EBADF",
         ] {
             assert_eq!(Read::from_str(line).unwrap().to_string(), line);

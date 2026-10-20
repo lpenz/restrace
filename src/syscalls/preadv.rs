@@ -7,6 +7,7 @@
 //! [`preadv(2)`]: https://man7.org/linux/man-pages/man2/preadv.2.html
 
 use super::buffer::Buffer;
+use super::fd::Fd;
 use super::iovec::IovecList;
 use super::lenresult::LenResult;
 use super::parse::{self, ParseError};
@@ -27,8 +28,9 @@ use std::str::FromStr;
 /// read starts at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Preadv {
-    /// File descriptor the call read from.
-    pub fd: i32,
+    /// File descriptor the call read from, with the path `strace` resolved
+    /// for it when run with `-y`.
+    pub fd: Fd,
     /// The buffers the call read into, or the raw address of the iov array
     /// when `strace` could not read it. After a failure the bases are shown
     /// as addresses too, so the buffers carry no decoded bytes.
@@ -55,7 +57,7 @@ impl Preadv {
         raw_result: i64,
     ) -> Self {
         Self {
-            fd,
+            fd: Fd::new(fd),
             iov,
             iovcnt,
             offset,
@@ -91,7 +93,7 @@ impl FromStr for Preadv {
         }
         let fd = parts[0]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd", parts[0]))?;
         let iov = super::buffer::parse(parts[1].trim())?;
         let iovcnt = parts[2]
@@ -186,7 +188,7 @@ mod tests {
     #[test]
     fn parse_success() {
         let call = Preadv::from_str(SUCCESS).unwrap();
-        assert_eq!(call.fd, 3);
+        assert_eq!(call.fd, Fd::new(3));
         assert_eq!(
             call.iov,
             list(vec![(b"abcd", 4), (b"efghij", 16), (b"", 8)])
@@ -209,7 +211,7 @@ mod tests {
         let line = "preadv(99, [{iov_base=0x7f8cc17fc210, iov_len=8}], 1, 512) = -1 EBADF \
                     (Bad file descriptor)";
         let call = Preadv::from_str(line).unwrap();
-        assert_eq!(call.fd, 99);
+        assert_eq!(call.fd, Fd::new(99));
         assert_eq!(call.result, LenResult::Errno(Errno::EBADF));
         assert_eq!(
             call.to_string(),

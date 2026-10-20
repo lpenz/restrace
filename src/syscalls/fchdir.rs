@@ -6,6 +6,7 @@
 //!
 //! [`fchdir(2)`]: https://man7.org/linux/man-pages/man2/fchdir.2.html
 
+use super::fd::Fd;
 use super::parse::ParseError;
 use super::result::OkResult;
 use std::fmt;
@@ -16,10 +17,11 @@ use std::str::FromStr;
 /// ```text
 /// int fchdir(int fd);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fchdir {
-    /// File descriptor of the directory to change to.
-    pub fd: i32,
+    /// File descriptor of the directory to change to, with the path `strace`
+    /// resolved for it when run with `-y`.
+    pub fd: Fd,
     /// Return value: zero on success, or the errno of the failure.
     pub result: OkResult,
 }
@@ -32,7 +34,7 @@ impl Fchdir {
     #[must_use]
     pub fn from_raw(fd: i32, raw_result: i64) -> Self {
         Self {
-            fd,
+            fd: Fd::new(fd),
             result: OkResult::from_raw(raw_result),
         }
     }
@@ -57,7 +59,7 @@ impl FromStr for Fchdir {
             .strip_prefix("fchdir(")
             .ok_or_else(syntax)?
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| syntax())?;
         Ok(Self {
             fd,
@@ -89,7 +91,7 @@ mod tests {
     fn parse_success() {
         let fchdir = Fchdir::from_str("fchdir(3) = 0").unwrap();
         assert_eq!(fchdir, Fchdir::from_raw(3, 0));
-        assert_eq!(fchdir.fd, 3);
+        assert_eq!(fchdir.fd, Fd::new(3));
     }
 
     #[test]

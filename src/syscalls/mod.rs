@@ -105,7 +105,7 @@ pub use execveat::{Execveat, ExecveatFlags};
 pub use faccessat::Faccessat;
 pub use faccessat2::{Faccessat2, FaccessatFlags};
 pub use fchdir::Fchdir;
-pub use fd::FdResult;
+pub use fd::{Fd, FdResult};
 pub use filemode::FileMode;
 pub use fork::{Fork, ForkResult};
 pub use fstat::Fstat;

@@ -6,7 +6,7 @@
 //!
 //! [`dup2(2)`]: https://man7.org/linux/man-pages/man2/dup2.2.html
 
-use super::fd::FdResult;
+use super::fd::{Fd, FdResult};
 use super::parse::{self, ParseError};
 use std::fmt;
 use std::str::FromStr;
@@ -16,12 +16,14 @@ use std::str::FromStr;
 /// ```text
 /// int dup2(int oldfd, int newfd);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dup2 {
-    /// The file descriptor to duplicate.
-    pub oldfd: i32,
-    /// The file descriptor to make a copy of `oldfd`.
-    pub newfd: i32,
+    /// The file descriptor to duplicate, with the path `strace` resolved for
+    /// it when run with `-y`.
+    pub oldfd: Fd,
+    /// The file descriptor to make a copy of `oldfd`, with the path `strace`
+    /// resolved for it when run with `-y`.
+    pub newfd: Fd,
     /// Return value: the new file descriptor, or the errno that caused the
     /// failure.
     pub result: FdResult,
@@ -35,8 +37,8 @@ impl Dup2 {
     #[must_use]
     pub fn from_raw(oldfd: i32, newfd: i32, raw_result: i64) -> Self {
         Self {
-            oldfd,
-            newfd,
+            oldfd: Fd::new(oldfd),
+            newfd: Fd::new(newfd),
             result: FdResult::from_raw(raw_result),
         }
     }
@@ -62,8 +64,8 @@ impl FromStr for Dup2 {
         if parts.len() != 2 {
             return Err(ParseError::new("dup2 arguments", args));
         }
-        let oldfd = parts[0].trim().parse::<i32>().map_err(|_| syntax())?;
-        let newfd = parts[1].trim().parse::<i32>().map_err(|_| syntax())?;
+        let oldfd = parts[0].trim().parse::<Fd>().map_err(|_| syntax())?;
+        let newfd = parts[1].trim().parse::<Fd>().map_err(|_| syntax())?;
         Ok(Self {
             oldfd,
             newfd,
@@ -95,15 +97,15 @@ mod tests {
     fn parse_success() {
         let dup2 = Dup2::from_str("dup2(0, 3) = 3").unwrap();
         assert_eq!(dup2, Dup2::from_raw(0, 3, 3));
-        assert_eq!(dup2.oldfd, 0);
-        assert_eq!(dup2.newfd, 3);
+        assert_eq!(dup2.oldfd, Fd::new(0));
+        assert_eq!(dup2.newfd, Fd::new(3));
     }
 
     #[test]
     fn parse_failure() {
         let dup2 = Dup2::from_str("dup2(1, 3) = -1 EBADF").unwrap();
-        assert_eq!(dup2.oldfd, 1);
-        assert_eq!(dup2.newfd, 3);
+        assert_eq!(dup2.oldfd, Fd::new(1));
+        assert_eq!(dup2.newfd, Fd::new(3));
         assert_eq!(dup2.result, FdResult::Errno(Errno::EBADF));
     }
 

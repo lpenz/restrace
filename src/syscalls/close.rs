@@ -6,6 +6,7 @@
 //!
 //! [`close(2)`]: https://man7.org/linux/man-pages/man2/close.2.html
 
+use super::fd::Fd;
 use super::parse::ParseError;
 use super::result::OkResult;
 use std::fmt;
@@ -16,10 +17,11 @@ use std::str::FromStr;
 /// ```text
 /// int close(int fd);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Close {
-    /// The file descriptor to close.
-    pub fd: i32,
+    /// The file descriptor to close, with the path `strace` resolved for it
+    /// when run with `-y`.
+    pub fd: Fd,
     /// Return value: zero on success, or the errno of the failure.
     pub result: OkResult,
 }
@@ -32,7 +34,7 @@ impl Close {
     #[must_use]
     pub fn from_raw(fd: i32, raw_result: i64) -> Self {
         Self {
-            fd,
+            fd: Fd::new(fd),
             result: OkResult::from_raw(raw_result),
         }
     }
@@ -57,7 +59,7 @@ impl FromStr for Close {
             .strip_prefix("close(")
             .ok_or_else(syntax)?
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| syntax())?;
         Ok(Self {
             fd,
@@ -97,7 +99,7 @@ mod tests {
     #[test]
     fn parse_failure() {
         let close = Close::from_str("close(3) = -1 EBADF").unwrap();
-        assert_eq!(close.fd, 3);
+        assert_eq!(close.fd, Fd::new(3));
         assert_eq!(close.result, OkResult::Errno(Errno::EBADF));
     }
 

@@ -191,6 +191,7 @@ impl FromStr for Openat2 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::syscalls::fd::Fd;
     use crate::syscalls::open::OpenFlags;
 
     fn how(flags: u32, resolve: ResolveFlags) -> OpenHow {
@@ -276,7 +277,7 @@ mod tests {
             super::super::buffer::Buffer::Decoded(how(0, ResolveFlags::NONE))
         );
         assert_eq!(call.size, 24);
-        assert_eq!(call.result, FdResult::Fd(3));
+        assert_eq!(call.result, FdResult::Fd(Fd::new(3)));
         assert_eq!(call.to_string(), line);
     }
 

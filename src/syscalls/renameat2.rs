@@ -296,8 +296,8 @@ mod tests {
     fn parse_zero_flags_and_failure() {
         let renameat2 =
             Renameat2::from_str("renameat2(3, \"a\", 4, \"b\", 0) = -1 EACCES").unwrap();
-        assert_eq!(renameat2.olddirfd, DirFd(3));
-        assert_eq!(renameat2.newdirfd, DirFd(4));
+        assert_eq!(renameat2.olddirfd, DirFd::new(3));
+        assert_eq!(renameat2.newdirfd, DirFd::new(4));
         assert_eq!(renameat2.flags, Renameat2Flags::default());
         assert_eq!(renameat2.result, OkResult::Errno(Errno::EACCES));
     }

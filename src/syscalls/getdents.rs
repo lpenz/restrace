@@ -8,6 +8,7 @@
 
 use super::buffer::Buffer;
 use super::dirent::{Dirent, DirentList};
+use super::fd::Fd;
 use super::lenresult::LenResult;
 use super::parse::{self, ParseError};
 use std::fmt;
@@ -20,8 +21,9 @@ use std::str::FromStr;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Getdents {
-    /// File descriptor of the directory to read.
-    pub fd: i32,
+    /// File descriptor of the directory to read, with the path `strace`
+    /// resolved for it when run with `-y`.
+    pub fd: Fd,
     /// The entries the call read, or the raw address of the buffer when
     /// `strace` could not decode it, such as after a failure.
     pub buf: Buffer<DirentList<Dirent>>,
@@ -39,7 +41,7 @@ impl Getdents {
     #[must_use]
     pub fn from_raw(fd: i32, buf: Buffer<DirentList<Dirent>>, count: u64, raw_result: i64) -> Self {
         Self {
-            fd,
+            fd: Fd::new(fd),
             buf,
             count,
             result: LenResult::from_raw(raw_result),
@@ -73,7 +75,7 @@ impl FromStr for Getdents {
         }
         let fd = parts[0]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd", parts[0]))?;
         let buf = super::buffer::parse(parts[1].trim())?;
         let count = parts[2]
@@ -139,7 +141,7 @@ mod tests {
     #[test]
     fn parse_success() {
         let call = Getdents::from_str(SUCCESS).unwrap();
-        assert_eq!(call.fd, 3);
+        assert_eq!(call.fd, Fd::new(3));
         assert_eq!(call.buf, list());
         assert_eq!(call.count, 4096);
         assert_eq!(call.result, LenResult::Len(48));

@@ -72,6 +72,23 @@ async fn trace_shell(script: &str) -> Vec<Event> {
     trace(cmd).await
 }
 
+/// Like [`trace`], but inserts `extra` `strace` arguments between the base
+/// flags and the traced program.
+async fn trace_with<I, S>(cmd: Command, extra: I) -> Vec<Event>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut lines =
+        restrace::tokio::stream_with(TokioCommand::from(cmd), extra).expect("spawn strace");
+    let mut collected = Vec::new();
+    while let Some(line) = lines.next().await {
+        collected.push(line);
+    }
+    lines.wait().await.expect("wait for strace");
+    collected
+}
+
 #[::tokio::test]
 async fn traces_a_single_process() {
     if !strace_available() {
@@ -581,4 +598,47 @@ fn raw_trace(cmd: &[&str]) -> String {
     let text = std::fs::read_to_string(&path).expect("read the raw trace");
     std::fs::remove_file(&path).expect("remove the temporary trace");
     text
+}
+
+/// Checks that `strace -y` annotations are parsed when present. A `cat(1)`
+/// reading from `/dev/null` produces `openat` with the resolved path on the
+/// result and `read` with the resolved path on the descriptor, which the
+/// parser must round-trip.
+#[::tokio::test]
+async fn parses_y_annotated_fd() {
+    if !strace_available() {
+        return;
+    }
+    let mut cmd = Command::new("cat");
+    cmd.arg("/dev/null");
+    let lines = trace_with(cmd, ["-e", "trace=openat,read"]).await;
+
+    let has_annotated_openat = lines.iter().any(|line| {
+        if let restrace::Action::Openat(openat) = &line.action {
+            if let restrace::syscalls::FdResult::Fd(fd) = &openat.result {
+                fd.path()
+                    .and_then(|p| p.to_str().ok())
+                    .is_some_and(|p| p.starts_with("/dev/null"))
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    });
+    let has_annotated_read = lines.iter().any(|line| {
+        if let restrace::Action::Read(read) = &line.action {
+            read.fd
+                .path()
+                .and_then(|p| p.to_str().ok())
+                .is_some_and(|p| p.starts_with("/dev/null"))
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_annotated_openat,
+        "expected annotated openat result: {lines:?}"
+    );
+    assert!(has_annotated_read, "expected annotated read fd: {lines:?}");
 }

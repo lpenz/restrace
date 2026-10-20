@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn display_mixed_dirs() {
-        let renameat = Renameat::from_raw(DirFd(3), "a", DirFd(4), "b", -21);
+        let renameat = Renameat::from_raw(DirFd::new(3), "a", DirFd::new(4), "b", -21);
         assert_eq!(
             renameat.to_string(),
             "renameat(3, \"a\", 4, \"b\") = -1 EISDIR"
@@ -145,8 +145,8 @@ mod tests {
     #[test]
     fn parse_failure() {
         let renameat = Renameat::from_str("renameat(3, \"a\", 4, \"b\") = -1 EACCES").unwrap();
-        assert_eq!(renameat.olddirfd, DirFd(3));
-        assert_eq!(renameat.newdirfd, DirFd(4));
+        assert_eq!(renameat.olddirfd, DirFd::new(3));
+        assert_eq!(renameat.newdirfd, DirFd::new(4));
         assert_eq!(renameat.result, OkResult::Errno(Errno::EACCES));
     }
 

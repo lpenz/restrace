@@ -7,6 +7,7 @@
 //! [`mmap(2)`]: https://man7.org/linux/man-pages/man2/mmap.2.html
 
 use super::errno::Errno;
+use super::fd::Fd;
 use super::flags;
 use super::parse::{self, ParseError};
 use std::fmt;
@@ -89,8 +90,9 @@ pub struct Mmap {
     pub prot: ProtFlags,
     /// Type and options of the mapping; see [`MmapFlags`].
     pub flags: MmapFlags,
-    /// File descriptor the mapping maps from, or -1 for anonymous mappings.
-    pub fd: i32,
+    /// File descriptor the mapping maps from, or -1 for anonymous mappings,
+    /// with the path `strace` resolved for it when run with `-y`.
+    pub fd: Fd,
     /// Offset into the file, in bytes.
     pub offset: u64,
     /// Return value: the address of the mapped region, or the errno of the
@@ -118,7 +120,7 @@ impl Mmap {
             length,
             prot,
             flags,
-            fd,
+            fd: Fd::new(fd),
             offset,
             result: MapResult::from_raw(raw_result),
         }
@@ -176,7 +178,7 @@ impl FromStr for Mmap {
         let flags = MmapFlags::from_str(parts[3].trim())?;
         let fd = parts[4]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd", parts[4]))?;
         let offset = parse_hex_arg(parts[5].trim(), "offset")?;
         Ok(Self {
@@ -585,7 +587,7 @@ mod tests {
         assert_eq!(mmap.length, 8192);
         assert_eq!(mmap.prot, ProtFlags(0x3));
         assert_eq!(mmap.flags, MmapFlags(0x22));
-        assert_eq!(mmap.fd, -1);
+        assert_eq!(mmap.fd, Fd::new(-1));
         assert_eq!(mmap.offset, 0);
         assert_eq!(mmap.result, MapResult::Address(0x7f1234567000));
         assert_eq!(
@@ -602,7 +604,7 @@ mod tests {
         assert_eq!(mmap.length, 0);
         assert_eq!(mmap.prot, ProtFlags::PROT_NONE);
         assert_eq!(mmap.flags, MmapFlags::MAP_FILE);
-        assert_eq!(mmap.fd, 0);
+        assert_eq!(mmap.fd, Fd::new(0));
         assert_eq!(mmap.offset, 0);
         assert_eq!(mmap.result, MapResult::Errno(Errno::ENOMEM));
     }

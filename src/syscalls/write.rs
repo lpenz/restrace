@@ -8,6 +8,7 @@
 
 use super::buffer::Buffer;
 use super::bytes::Bytes;
+use super::fd::Fd;
 use super::lenresult::LenResult;
 use super::parse::{self, ParseError};
 use std::fmt;
@@ -24,8 +25,9 @@ use std::str::FromStr;
 /// on a short write, and it is decoded even when the call fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Write {
-    /// File descriptor the call wrote to.
-    pub fd: i32,
+    /// File descriptor the call wrote to, with the path `strace` resolved for
+    /// it when run with `-y`.
+    pub fd: Fd,
     /// The bytes the call wrote, or the raw address of the buffer when
     /// `strace` could not decode it, such as after a failure.
     pub buf: Buffer<Bytes>,
@@ -43,7 +45,7 @@ impl Write {
     #[must_use]
     pub fn from_raw(fd: i32, buf: Buffer<Bytes>, count: u64, raw_result: i64) -> Self {
         Self {
-            fd,
+            fd: Fd::new(fd),
             buf,
             count,
             result: LenResult::from_raw(raw_result),
@@ -77,7 +79,7 @@ impl FromStr for Write {
         }
         let fd = parts[0]
             .trim()
-            .parse::<i32>()
+            .parse::<Fd>()
             .map_err(|_| ParseError::new("fd", parts[0]))?;
         let buf = super::buffer::parse(parts[1].trim())?;
         let count = parts[2]
@@ -132,7 +134,7 @@ mod tests {
     fn parse_success() {
         let line = "write(1, \"hi\\n\", 3) = 3";
         let call = Write::from_str(line).unwrap();
-        assert_eq!(call.fd, 1);
+        assert_eq!(call.fd, Fd::new(1));
         assert_eq!(call.buf, decoded(b"hi\n"));
         assert_eq!(call.count, 3);
         assert_eq!(call.result, LenResult::Len(3));
@@ -143,7 +145,7 @@ mod tests {
     fn parse_failure() {
         let line = "write(3, 0x7fff1234, 64) = -1 EFAULT";
         let call = Write::from_str(line).unwrap();
-        assert_eq!(call.fd, 3);
+        assert_eq!(call.fd, Fd::new(3));
         assert_eq!(call.buf, Buffer::<Bytes>::Address(0x7fff1234));
         assert_eq!(call.count, 64);
         assert_eq!(call.result, LenResult::Errno(Errno::EFAULT));
