@@ -11,7 +11,7 @@ use crate::syscalls::{
     Getdents, Getdents64, Link, Linkat, Lstat, Mkdir, Mkdirat, Mmap, Newfstatat, Open, Openat,
     Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Pwritev, Pwritev2, Read, Readlink,
     Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx, Symlink,
-    Symlinkat, Unlink, Unlinkat, Vfork, Write, Writev,
+    Symlinkat, Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -133,6 +133,8 @@ pub enum Action {
     Unlink(Unlink),
     /// An `unlinkat(2)` call.
     Unlinkat(Unlinkat),
+    /// A `utimensat(2)` call.
+    Utimensat(Utimensat),
     /// A `vfork(2)` call.
     Vfork(Vfork),
     /// A `write(2)` call.
@@ -202,6 +204,7 @@ impl fmt::Display for Action {
             Self::Symlinkat(syscall) => syscall.fmt(f),
             Self::Unlink(syscall) => syscall.fmt(f),
             Self::Unlinkat(syscall) => syscall.fmt(f),
+            Self::Utimensat(syscall) => syscall.fmt(f),
             Self::Vfork(syscall) => syscall.fmt(f),
             Self::Write(syscall) => syscall.fmt(f),
             Self::Writev(syscall) => syscall.fmt(f),
@@ -381,6 +384,9 @@ impl FromStr for Action {
         }
         if let Ok(syscall) = Unlinkat::from_str(s) {
             return Ok(Self::Unlinkat(syscall));
+        }
+        if let Ok(syscall) = Utimensat::from_str(s) {
+            return Ok(Self::Utimensat(syscall));
         }
         if let Ok(syscall) = Vfork::from_str(s) {
             return Ok(Self::Vfork(syscall));

@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Typed records for more file-system calls, carried as new `Action` variants:
   `access`, `faccessat`, `faccessat2`, `unlink`, `unlinkat`, `symlink`,
-  `symlinkat`, `link` and `linkat`, with the `AccessMode`, `UnlinkatFlags`,
-  `LinkatFlags` and `FaccessatFlags` argument types.
+  `symlinkat`, `link`, `linkat` and `utimensat`, with the `AccessMode`,
+  `UnlinkatFlags`, `LinkatFlags` and `FaccessatFlags` argument types.
 - `stdprocess::stream_with` and, under the `tokio` feature, `tokio::stream_with`
   and `tokio::under_strace_with`, to run a command under `strace` with extra
   `strace` arguments while still reading and parsing the trace from a dedicated

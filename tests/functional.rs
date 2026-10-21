@@ -275,6 +275,22 @@ async fn parses_write() {
     assert_eq!(buf.0, b"hi\n");
 }
 
+/// Runs a command that calls `utimensat(2)`, and checks that the call parses
+/// as `Action::Utimensat`.
+#[::tokio::test]
+async fn parses_utimensat() {
+    if !strace_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-utimensat-{}.txt", std::process::id()));
+    std::fs::File::create(&path).expect("create test file");
+    let lines = trace_shell(&format!("touch {}", path.display())).await;
+    let _ = std::fs::remove_file(&path);
+    assert!(lines.iter().any(|line| {
+        matches!(&line.action, restrace::Action::Utimensat(utimensat) if utimensat.result.is_ok())
+    }));
+}
+
 /// Runs a Python one-liner whose `os.fsync` call makes the traced process
 /// issue a `fsync(2)`, and checks that the call parses as `Action::Fsync`.
 ///
