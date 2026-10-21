@@ -339,6 +339,41 @@ async fn parses_fdatasync() {
     );
 }
 
+/// Runs a Python one-liner whose `os.ftruncate` call makes the traced process
+/// issue a `ftruncate(2)`, and checks that the call parses as
+/// `Action::Ftruncate` with the length it set.
+///
+/// No common shell command issues `ftruncate(2)` directly, so this test needs
+/// `python3` on top of `strace`; it skips itself when either is missing.
+#[::tokio::test]
+async fn parses_ftruncate() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-ftruncate-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; fd = os.open({path:?}, os.O_CREAT | os.O_RDWR, 0o644); \
+         os.write(fd, b'hi\\n'); os.ftruncate(fd, 4); os.close(fd); os.unlink({path:?})",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+
+    let ftruncate = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Ftruncate(ftruncate) => Some(ftruncate),
+            _ => None,
+        })
+        .expect("expected a parsed ftruncate(2)");
+    assert_eq!(ftruncate.length, 4);
+    assert!(
+        ftruncate.result.is_ok(),
+        "expected a successful ftruncate(2)"
+    );
+}
+
 /// Runs a shell command line whose `ldd(1)` writes its report with
 /// `writev(2)`, and checks that the call parses as `Action::Writev` with the
 /// bytes decoded from one of its buffers.
