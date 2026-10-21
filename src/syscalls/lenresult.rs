@@ -10,7 +10,8 @@ use std::fmt;
 use std::str::FromStr;
 
 /// The return value of a system call that reports how many bytes it
-/// transferred, such as [`getdents(2)`](super::getdents::Getdents),
+/// transferred, such as [`getcwd(2)`](super::getcwd::Getcwd),
+/// [`getdents(2)`](super::getdents::Getdents),
 /// [`read(2)`](super::read::Read),
 /// [`readv(2)`](super::readv::Readv),
 /// [`pread64(2)`](super::pread64::Pread64),

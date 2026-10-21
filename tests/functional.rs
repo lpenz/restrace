@@ -233,6 +233,27 @@ async fn parses_read() {
     assert_eq!(buf.0, b"hi\n");
 }
 
+/// Runs a `/bin/pwd`, which resolves the current working directory with
+/// `getcwd(2)`, and checks that the call parses as `Action::Getcwd` with the
+/// path decoded from its buffer.
+#[::tokio::test]
+async fn parses_getcwd() {
+    if !strace_available() {
+        return;
+    }
+    let lines = trace_shell("/bin/pwd").await;
+
+    let buf = lines
+        .iter()
+        .filter_map(|line| match &line.action {
+            restrace::Action::Getcwd(getcwd) => getcwd.buf.decoded(),
+            _ => None,
+        })
+        .find(|buf| !buf.0.to_bytes().is_empty())
+        .expect("expected a parsed getcwd(2) with the current directory");
+    assert!(buf.0.to_bytes().starts_with(b"/"));
+}
+
 /// Runs a shell command line whose builtin `printf` writes to its standard
 /// output, and checks that the call parses as `Action::Write` with the bytes
 /// decoded from its buffer.
