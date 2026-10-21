@@ -305,6 +305,40 @@ async fn parses_fsync() {
     assert!(fsync.result.is_ok(), "expected a successful fsync(2)");
 }
 
+/// Runs a Python one-liner whose `os.fdatasync` call makes the traced process
+/// issue a `fdatasync(2)`, and checks that the call parses as
+/// `Action::Fdatasync`.
+///
+/// No common shell command issues `fdatasync(2)` directly, so this test needs
+/// `python3` on top of `strace`; it skips itself when either is missing.
+#[::tokio::test]
+async fn parses_fdatasync() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-fdatasync-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; fd = os.open({path:?}, os.O_CREAT | os.O_WRONLY, 0o644); \
+         os.write(fd, b'hi\\n'); os.fdatasync(fd); os.close(fd); os.unlink({path:?})",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+
+    let fdatasync = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Fdatasync(fdatasync) => Some(fdatasync),
+            _ => None,
+        })
+        .expect("expected a parsed fdatasync(2)");
+    assert!(
+        fdatasync.result.is_ok(),
+        "expected a successful fdatasync(2)"
+    );
+}
+
 /// Runs a shell command line whose `ldd(1)` writes its report with
 /// `writev(2)`, and checks that the call parses as `Action::Writev` with the
 /// bytes decoded from one of its buffers.

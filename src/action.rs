@@ -7,11 +7,11 @@
 use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3, Execve, Execveat,
-    Faccessat, Faccessat2, Fchdir, Fork, Fstat, Fsync, Generic, Getcwd, Getdents, Getdents64, Link,
-    Linkat, Lstat, Mkdir, Mkdirat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2,
-    Pread64, Preadv, Preadv2, Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename,
-    Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx, Symlink, Symlinkat, Unlink,
-    Unlinkat, Vfork, Write, Writev,
+    Faccessat, Faccessat2, Fchdir, Fdatasync, Fork, Fstat, Fsync, Generic, Getcwd, Getdents,
+    Getdents64, Link, Linkat, Lstat, Mkdir, Mkdirat, Mmap, Newfstatat, Open, Openat, Openat2,
+    ParseError, Pipe2, Pread64, Preadv, Preadv2, Pwritev, Pwritev2, Read, Readlink, Readlinkat,
+    Readv, Rename, Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx, Symlink, Symlinkat,
+    Unlink, Unlinkat, Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -53,6 +53,8 @@ pub enum Action {
     Faccessat2(Faccessat2),
     /// An `fchdir(2)` call.
     Fchdir(Fchdir),
+    /// An `fdatasync(2)` call.
+    Fdatasync(Fdatasync),
     /// A `fork(2)` call.
     Fork(Fork),
     /// An `fstat(2)` call.
@@ -158,6 +160,7 @@ impl fmt::Display for Action {
             Self::Faccessat(syscall) => syscall.fmt(f),
             Self::Faccessat2(syscall) => syscall.fmt(f),
             Self::Fchdir(syscall) => syscall.fmt(f),
+            Self::Fdatasync(syscall) => syscall.fmt(f),
             Self::Fork(syscall) => syscall.fmt(f),
             Self::Fstat(syscall) => syscall.fmt(f),
             Self::Fsync(syscall) => syscall.fmt(f),
@@ -255,6 +258,9 @@ impl FromStr for Action {
         }
         if let Ok(syscall) = Fchdir::from_str(s) {
             return Ok(Self::Fchdir(syscall));
+        }
+        if let Ok(syscall) = Fdatasync::from_str(s) {
+            return Ok(Self::Fdatasync(syscall));
         }
         if let Ok(syscall) = Fork::from_str(s) {
             return Ok(Self::Fork(syscall));
@@ -405,6 +411,7 @@ mod tests {
         let is_faccessat: fn(&Action) -> bool = |s| matches!(s, Action::Faccessat(_));
         let is_faccessat2: fn(&Action) -> bool = |s| matches!(s, Action::Faccessat2(_));
         let is_fchdir: fn(&Action) -> bool = |s| matches!(s, Action::Fchdir(_));
+        let is_fdatasync: fn(&Action) -> bool = |s| matches!(s, Action::Fdatasync(_));
         let is_fork: fn(&Action) -> bool = |s| matches!(s, Action::Fork(_));
         let is_fstat: fn(&Action) -> bool = |s| matches!(s, Action::Fstat(_));
         let is_fsync: fn(&Action) -> bool = |s| matches!(s, Action::Fsync(_));
@@ -480,6 +487,7 @@ mod tests {
                 is_faccessat2,
             ),
             ("fchdir(0) = 0", is_fchdir),
+            ("fdatasync(3) = 0", is_fdatasync),
             ("fork() = 123", is_fork),
             ("fstat(1, 0x1) = -1 EBADF", is_fstat),
             ("fsync(3) = 0", is_fsync),
@@ -597,6 +605,8 @@ mod tests {
             "dup3(0, 4, O_CLOEXEC) = 4",
             "fsync(3) = 0",
             "fsync(3) = -1 EBADF",
+            "fdatasync(3) = 0",
+            "fdatasync(3) = -1 EBADF",
             "open(\"/tmp/file\", O_WRONLY|O_CREAT|O_TRUNC, 0644) = 3",
             "pipe2([3, 4], O_CLOEXEC) = 0",
             "pread64(3, \"carb\", 4, 0) = 4",
