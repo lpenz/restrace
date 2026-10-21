@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A typed `getdents64(2)` record, carried as the `Action::Getdents64` variant,
   with the `Dirent64` entry type.
 - A typed `fstat(2)` record, carried as the `Action::Fstat` variant.
+- A typed `fsync(2)` record, carried as the `Action::Fsync` variant.
 - A typed `newfstatat(2)` record, carried as the `Action::Newfstatat` variant,
   with the `NewfstatatFlags` argument type.
 - A typed `stat(2)` record, carried as the `Action::Stat` variant, with the

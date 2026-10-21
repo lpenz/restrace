@@ -7,7 +7,7 @@
 use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3, Execve, Execveat,
-    Faccessat, Faccessat2, Fchdir, Fork, Fstat, Generic, Getcwd, Getdents, Getdents64, Link,
+    Faccessat, Faccessat2, Fchdir, Fork, Fstat, Fsync, Generic, Getcwd, Getdents, Getdents64, Link,
     Linkat, Lstat, Mkdir, Mkdirat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2,
     Pread64, Preadv, Preadv2, Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename,
     Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx, Symlink, Symlinkat, Unlink,
@@ -57,6 +57,8 @@ pub enum Action {
     Fork(Fork),
     /// An `fstat(2)` call.
     Fstat(Fstat),
+    /// An `fsync(2)` call.
+    Fsync(Fsync),
     /// A `getcwd(2)` call.
     Getcwd(Getcwd),
     /// A `getdents(2)` call.
@@ -158,6 +160,7 @@ impl fmt::Display for Action {
             Self::Fchdir(syscall) => syscall.fmt(f),
             Self::Fork(syscall) => syscall.fmt(f),
             Self::Fstat(syscall) => syscall.fmt(f),
+            Self::Fsync(syscall) => syscall.fmt(f),
             Self::Getcwd(syscall) => syscall.fmt(f),
             Self::Getdents(syscall) => syscall.fmt(f),
             Self::Getdents64(syscall) => syscall.fmt(f),
@@ -258,6 +261,9 @@ impl FromStr for Action {
         }
         if let Ok(syscall) = Fstat::from_str(s) {
             return Ok(Self::Fstat(syscall));
+        }
+        if let Ok(syscall) = Fsync::from_str(s) {
+            return Ok(Self::Fsync(syscall));
         }
         if let Ok(syscall) = Getcwd::from_str(s) {
             return Ok(Self::Getcwd(syscall));
@@ -401,6 +407,7 @@ mod tests {
         let is_fchdir: fn(&Action) -> bool = |s| matches!(s, Action::Fchdir(_));
         let is_fork: fn(&Action) -> bool = |s| matches!(s, Action::Fork(_));
         let is_fstat: fn(&Action) -> bool = |s| matches!(s, Action::Fstat(_));
+        let is_fsync: fn(&Action) -> bool = |s| matches!(s, Action::Fsync(_));
         let is_getcwd: fn(&Action) -> bool = |s| matches!(s, Action::Getcwd(_));
         let is_getdents: fn(&Action) -> bool = |s| matches!(s, Action::Getdents(_));
         let is_getdents64: fn(&Action) -> bool = |s| matches!(s, Action::Getdents64(_));
@@ -475,6 +482,7 @@ mod tests {
             ("fchdir(0) = 0", is_fchdir),
             ("fork() = 123", is_fork),
             ("fstat(1, 0x1) = -1 EBADF", is_fstat),
+            ("fsync(3) = 0", is_fsync),
             ("getcwd(\"/tmp\", 4096) = 4", is_getcwd),
             ("getdents(3, [], 4096) = 0", is_getdents),
             ("getdents64(3, [], 4096) = 0", is_getdents64),
@@ -587,6 +595,8 @@ mod tests {
             "dup(0) = 3",
             "dup2(1, 3) = 3",
             "dup3(0, 4, O_CLOEXEC) = 4",
+            "fsync(3) = 0",
+            "fsync(3) = -1 EBADF",
             "open(\"/tmp/file\", O_WRONLY|O_CREAT|O_TRUNC, 0644) = 3",
             "pipe2([3, 4], O_CLOEXEC) = 0",
             "pread64(3, \"carb\", 4, 0) = 4",
