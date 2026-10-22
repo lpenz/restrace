@@ -38,7 +38,7 @@ fallback for calls without a dedicated type.
 Run these before committing:
 
 ```sh
-cargo fmt
+cargo fmt --check
 cargo clippy --all-targets --all-features
 cargo test --all-features
 omnilint repository
