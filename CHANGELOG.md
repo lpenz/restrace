@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Configurable `strace` options via `StraceOptions` and the new
+  `under_strace_with_options` and `stream_with_options` entry points in
+  `stdprocess`, with matching helpers in the `tokio` integration.
 - Typed records for more file-system calls, carried as new `Action` variants:
   `access`, `faccessat`, `faccessat2`, `unlink`, `unlinkat`, `symlink`,
   `symlinkat`, `link`, `linkat` and `utimensat`, with the `AccessMode`,

@@ -10,7 +10,7 @@
 
 use crate::Event;
 use crate::reconstruct::Reconstructor;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Lines};
 use std::os::fd::FromRawFd;
@@ -38,6 +38,134 @@ const STRACE_FLAGS: [&str; 8] = [
     "-y",
 ];
 
+/// Options controlling how `strace` is invoked.
+///
+/// The default options reproduce the current behaviour of [`under_strace`]
+/// and [`stream`]. Use a builder to override individual settings; for the
+/// new `*_with_options` entry points the options are applied as-is, while
+/// the existing entry points keep their historical defaults.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct StraceOptions {
+    /// When true, pass `-v` to `strace` to avoid abbreviating structures.
+    pub verbose: bool,
+    /// The `-s` limit for string decoding, in bytes.
+    pub strings: usize,
+    /// An optional `-e trace=` filter.
+    pub trace_filter: Option<OsString>,
+    /// When true, pass `--follow-forks`.
+    pub follow_forks: bool,
+    /// The format passed to `--absolute-timestamps`.
+    pub timestamps: OsString,
+    /// When true, pass `-y` to resolve file descriptors.
+    pub decode_fds: bool,
+    /// The `-a` column value.
+    pub align: OsString,
+}
+
+impl Default for StraceOptions {
+    fn default() -> Self {
+        Self {
+            verbose: true,
+            strings: 1048576,
+            trace_filter: None,
+            follow_forks: true,
+            timestamps: OsString::from("format:unix,precision:us"),
+            decode_fds: true,
+            align: OsString::from("0"),
+        }
+    }
+}
+
+impl StraceOptions {
+    /// Creates options that reproduce the current defaults.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets whether `-v` is passed.
+    #[must_use]
+    pub fn verbose(mut self, verbose: bool) -> Self {
+        self.verbose = verbose;
+        self
+    }
+
+    /// Sets the `-s` string limit.
+    #[must_use]
+    pub fn strings(mut self, strings: usize) -> Self {
+        self.strings = strings;
+        self
+    }
+
+    /// Sets the `-e trace=` filter.
+    #[must_use]
+    pub fn trace_filter<S: Into<OsString>>(mut self, filter: S) -> Self {
+        self.trace_filter = Some(filter.into());
+        self
+    }
+
+    /// Sets whether `--follow-forks` is passed.
+    #[must_use]
+    pub fn follow_forks(mut self, follow_forks: bool) -> Self {
+        self.follow_forks = follow_forks;
+        self
+    }
+
+    /// Sets the `--absolute-timestamps=` format.
+    #[must_use]
+    pub fn timestamps<S: Into<OsString>>(mut self, timestamps: S) -> Self {
+        self.timestamps = timestamps.into();
+        self
+    }
+
+    /// Sets whether `-y` is passed.
+    #[must_use]
+    pub fn decode_fds(mut self, decode_fds: bool) -> Self {
+        self.decode_fds = decode_fds;
+        self
+    }
+
+    /// Sets the `-a` column value.
+    #[must_use]
+    pub fn align<S: Into<OsString>>(mut self, align: S) -> Self {
+        self.align = align.into();
+        self
+    }
+}
+
+/// Builds the `strace` argument vector for the given options.
+pub(crate) fn strace_args_for_options_internal(opts: &StraceOptions) -> Vec<OsString> {
+    let mut args = Vec::new();
+    let mut ts = OsString::from("--absolute-timestamps=");
+    ts.push(&opts.timestamps);
+    args.push(ts);
+    if opts.follow_forks {
+        args.push(OsString::from("--follow-forks"));
+    }
+    args.push(OsString::from("-a"));
+    args.push(opts.align.clone());
+    if opts.verbose {
+        args.push(OsString::from("-v"));
+    }
+    args.push(OsString::from("-s"));
+    args.push(opts.strings.to_string().into());
+    if opts.decode_fds {
+        args.push(OsString::from("-y"));
+    }
+    if let Some(filter) = &opts.trace_filter {
+        let mut combined = OsString::from("trace=");
+        combined.push(filter);
+        args.push(OsString::from("-e"));
+        args.push(combined);
+    }
+    args
+}
+
+/// Builds the `strace` argument vector for the given options.
+fn strace_args_for_options(opts: &StraceOptions) -> Vec<OsString> {
+    strace_args_for_options_internal(opts)
+}
+
 /// File descriptor strace writes its trace output to.
 ///
 /// The descriptor is the write end of an anonymous pipe we create, passed to
@@ -58,7 +186,7 @@ pub(crate) const TRACE_FD: libc::c_int = 3;
 /// [`under_strace_with`] to add it.
 #[must_use]
 pub fn under_strace(cmd: Command) -> Command {
-    under_strace_with(cmd, [] as [&OsStr; 0])
+    under_strace_with_options(cmd, StraceOptions::default())
 }
 
 /// Like [`under_strace`], but inserts `extra` `strace` arguments between the
@@ -75,6 +203,28 @@ where
     let mut wrapped = Command::new("strace");
     wrapped.args(STRACE_FLAGS);
     wrapped.args(extra);
+    wrapped.arg(cmd.get_program());
+    wrapped.args(cmd.get_args());
+    if let Some(dir) = cmd.get_current_dir() {
+        wrapped.current_dir(dir);
+    }
+    for (key, value) in cmd.get_envs() {
+        if let Some(value) = value {
+            wrapped.env(key, value);
+        } else {
+            wrapped.env_remove(key);
+        }
+    }
+    wrapped
+}
+
+/// Like [`under_strace`], but uses the provided [`StraceOptions`].
+#[must_use]
+pub fn under_strace_with_options(cmd: Command, options: StraceOptions) -> Command {
+    let mut wrapped = Command::new("strace");
+    for arg in strace_args_for_options(&options) {
+        wrapped.arg(arg);
+    }
     wrapped.arg(cmd.get_program());
     wrapped.args(cmd.get_args());
     if let Some(dir) = cmd.get_current_dir() {
@@ -150,7 +300,7 @@ impl Iterator for EventIter {
 /// Returns an error if the trace pipe cannot be created or `strace` cannot be
 /// spawned.
 pub fn stream(cmd: Command) -> ::std::io::Result<EventIter> {
-    stream_with(cmd, [] as [&OsStr; 0])
+    stream_with_options(cmd, StraceOptions::default(), [] as [&OsStr; 0])
 }
 
 /// Like [`stream`], but inserts `extra` `strace` arguments between the base
@@ -168,6 +318,20 @@ pub fn stream(cmd: Command) -> ::std::io::Result<EventIter> {
 /// Returns an error if the trace pipe cannot be created or `strace` cannot be
 /// spawned.
 pub fn stream_with<I, S>(cmd: Command, extra: I) -> ::std::io::Result<EventIter>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    stream_with_options(cmd, StraceOptions::default(), extra)
+}
+
+/// Like [`stream`], but uses the provided [`StraceOptions`] and inserts
+/// `extra` `strace` arguments after those options.
+pub fn stream_with_options<I, S>(
+    cmd: Command,
+    options: StraceOptions,
+    extra: I,
+) -> ::std::io::Result<EventIter>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -192,13 +356,29 @@ where
     // The output redirection goes last so that it takes precedence over any
     // output selection in `extra`: `strace` keeps the last `-o`, and the trace
     // must reach the pipe for the iterator to yield events.
-    let mut args: Vec<std::ffi::OsString> = extra
+    let mut args: Vec<OsString> = extra
         .into_iter()
         .map(|arg| arg.as_ref().to_os_string())
         .collect();
     args.push("-o".into());
     args.push(trace_path.into());
-    let mut wrapped = under_strace_with(cmd, args);
+    let mut wrapped = Command::new("strace");
+    for arg in strace_args_for_options(&options) {
+        wrapped.arg(arg);
+    }
+    wrapped.args(args);
+    wrapped.arg(cmd.get_program());
+    wrapped.args(cmd.get_args());
+    if let Some(dir) = cmd.get_current_dir() {
+        wrapped.current_dir(dir);
+    }
+    for (key, value) in cmd.get_envs() {
+        if let Some(value) = value {
+            wrapped.env(key, value);
+        } else {
+            wrapped.env_remove(key);
+        }
+    }
     unsafe {
         wrapped.pre_exec(move || {
             // Give strace its own descriptor for the trace output. If it was
