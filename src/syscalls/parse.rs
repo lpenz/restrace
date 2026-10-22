@@ -115,7 +115,25 @@ pub(crate) fn unquote(input: &str, part: &'static str) -> Result<String, ParseEr
             Some('n') => out.push('\n'),
             Some('r') => out.push('\r'),
             Some('t') => out.push('\t'),
-            Some('0') => out.push('\0'),
+            Some('f') => out.push('\u{c}'),
+            Some('v') => out.push('\u{b}'),
+            Some(d @ '0'..='7') => {
+                // `strace` prints a non-printable byte as one to three octal
+                // digits; consume up to two more.
+                let mut digits = String::with_capacity(3);
+                digits.push(d);
+                for _ in 0..2 {
+                    match chars.clone().next() {
+                        Some(c @ '0'..='7') => {
+                            digits.push(c);
+                            chars.next();
+                        }
+                        _ => break,
+                    }
+                }
+                let byte = u8::from_str_radix(&digits, 8).map_err(|_| error())?;
+                out.push(char::from(byte));
+            }
             Some('x') => {
                 let hex: String = chars.by_ref().take(2).collect();
                 let byte = u8::from_str_radix(&hex, 16).map_err(|_| error())?;
@@ -262,6 +280,14 @@ mod tests {
             unquote("\"a\\\\b\\\"c\\nd\\x41\\u{263a}\"", "pathname").unwrap(),
             "a\\b\"c\ndA\u{263a}"
         );
+    }
+
+    #[test]
+    fn unquote_octal_and_control_escapes() {
+        assert_eq!(unquote("\"\\33[0m\"", "pathname").unwrap(), "\u{1b}[0m");
+        assert_eq!(unquote("\"\\f\\v\"", "pathname").unwrap(), "\u{c}\u{b}");
+        assert_eq!(unquote("\"\\0\"", "pathname").unwrap(), "\0");
+        assert_eq!(unquote("\"\\377\"", "pathname").unwrap(), "\u{ff}");
     }
 
     #[test]

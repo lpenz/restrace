@@ -135,7 +135,8 @@ async fn parses_described_and_short_syscalls() {
     }
     let lines = trace_shell(
         "d=$(mktemp -d); touch $d/a; ln $d/a $d/b; ln -s $d/a $d/c; \
-         rm $d/b $d/c $d/a; rmdir $d; test -r /nonexistent; rm $d/missing 2>/dev/null",
+         rm $d/b $d/c $d/a; test -r /nonexistent; \
+         rm -f $d/definitely-missing 2>/dev/null; rmdir $d",
     )
     .await;
 
@@ -183,14 +184,17 @@ async fn parses_described_and_short_syscalls() {
     assert!(has_unlink, "expected an unlink/unlinkat call: {lines:?}");
 
     // The failing `rm` reports an errno description on unlink; it must parse as
-    // the typed call with the errno stripped, not fall back to Generic.
-    let failed_unlink = lines.iter().any(|line| match &line.action {
-        restrace::Action::Unlink(unlink) => !unlink.result.is_ok(),
-        restrace::Action::Unlinkat(unlinkat) => !unlinkat.result.is_ok(),
-        _ => false,
+    // the typed call with the errno stripped, not fall back to Generic. `rm -f`
+    // is used so the call is issued even when stdin is a terminal, where plain
+    // `rm` prompts and skips the unlink.
+    let failed_unlink = lines.iter().find_map(|line| match &line.action {
+        restrace::Action::Unlink(unlink) if !unlink.result.is_ok() => Some(unlink.result),
+        restrace::Action::Unlinkat(unlinkat) if !unlinkat.result.is_ok() => Some(unlinkat.result),
+        _ => None,
     });
-    assert!(
+    assert_eq!(
         failed_unlink,
+        Some(OkResult::Errno(Errno::ENOENT)),
         "expected a failing unlink/unlinkat with a stripped errno: {lines:?}"
     );
 }
