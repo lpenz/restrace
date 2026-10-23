@@ -217,186 +217,85 @@ impl FromStr for Action {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, ParseError> {
-        if let Ok(syscall) = Access::from_str(s) {
-            return Ok(Self::Access(syscall));
-        }
-        if let Ok(syscall) = Chdir::from_str(s) {
-            return Ok(Self::Chdir(syscall));
-        }
-        if let Ok(syscall) = Clone::from_str(s) {
-            return Ok(Self::Clone(syscall));
-        }
-        if let Ok(syscall) = Clone3::from_str(s) {
-            return Ok(Self::Clone3(syscall));
-        }
-        if let Ok(syscall) = Close::from_str(s) {
-            return Ok(Self::Close(syscall));
-        }
-        if let Ok(syscall) = CopyFileRange::from_str(s) {
-            return Ok(Self::CopyFileRange(syscall));
-        }
-        if let Ok(syscall) = Creat::from_str(s) {
-            return Ok(Self::Creat(syscall));
-        }
-        if let Ok(syscall) = Dup::from_str(s) {
-            return Ok(Self::Dup(syscall));
-        }
-        if let Ok(syscall) = Dup2::from_str(s) {
-            return Ok(Self::Dup2(syscall));
-        }
-        if let Ok(syscall) = Dup3::from_str(s) {
-            return Ok(Self::Dup3(syscall));
-        }
-        if let Ok(syscall) = Execve::from_str(s) {
-            return Ok(Self::Execve(syscall));
-        }
-        if let Ok(syscall) = Execveat::from_str(s) {
-            return Ok(Self::Execveat(syscall));
-        }
-        if let Ok(exit) = Exit::from_str(s) {
+        let s_trim = s.trim();
+        if s_trim.starts_with("+++")
+            && let Ok(exit) = Exit::from_str(s)
+        {
             return Ok(Self::Exit(exit));
         }
-        if let Ok(syscall) = Faccessat::from_str(s) {
-            return Ok(Self::Faccessat(syscall));
+
+        if let Some(open) = s_trim.find('(') {
+            let name = &s_trim[..open];
+            if !(name.is_empty() || name.contains(char::is_whitespace)) {
+                let res = match name {
+                    "access" => Access::from_str(s).map(Self::Access),
+                    "chdir" => Chdir::from_str(s).map(Self::Chdir),
+                    "clone" => Clone::from_str(s).map(Self::Clone),
+                    "clone3" => Clone3::from_str(s).map(Self::Clone3),
+                    "close" => Close::from_str(s).map(Self::Close),
+                    "copy_file_range" => CopyFileRange::from_str(s).map(Self::CopyFileRange),
+                    "creat" => Creat::from_str(s).map(Self::Creat),
+                    "dup" => Dup::from_str(s).map(Self::Dup),
+                    "dup2" => Dup2::from_str(s).map(Self::Dup2),
+                    "dup3" => Dup3::from_str(s).map(Self::Dup3),
+                    "execve" => Execve::from_str(s).map(Self::Execve),
+                    "execveat" => Execveat::from_str(s).map(Self::Execveat),
+                    "faccessat" => Faccessat::from_str(s).map(Self::Faccessat),
+                    "faccessat2" => Faccessat2::from_str(s).map(Self::Faccessat2),
+                    "fchdir" => Fchdir::from_str(s).map(Self::Fchdir),
+                    "fdatasync" => Fdatasync::from_str(s).map(Self::Fdatasync),
+                    "fork" => Fork::from_str(s).map(Self::Fork),
+                    "fstat" => Fstat::from_str(s).map(Self::Fstat),
+                    "fsync" => Fsync::from_str(s).map(Self::Fsync),
+                    "ftruncate" => Ftruncate::from_str(s).map(Self::Ftruncate),
+                    "getcwd" => Getcwd::from_str(s).map(Self::Getcwd),
+                    "getdents" => Getdents::from_str(s).map(Self::Getdents),
+                    "getdents64" => Getdents64::from_str(s).map(Self::Getdents64),
+                    "link" => Link::from_str(s).map(Self::Link),
+                    "linkat" => Linkat::from_str(s).map(Self::Linkat),
+                    "lstat" => Lstat::from_str(s).map(Self::Lstat),
+                    "mkdir" => Mkdir::from_str(s).map(Self::Mkdir),
+                    "mkdirat" => Mkdirat::from_str(s).map(Self::Mkdirat),
+                    "mmap" => Mmap::from_str(s).map(Self::Mmap),
+                    "newfstatat" => Newfstatat::from_str(s).map(Self::Newfstatat),
+                    "open" => Open::from_str(s).map(Self::Open),
+                    "openat" => Openat::from_str(s).map(Self::Openat),
+                    "openat2" => Openat2::from_str(s).map(Self::Openat2),
+                    "pipe2" => Pipe2::from_str(s).map(Self::Pipe2),
+                    "pread64" => Pread64::from_str(s).map(Self::Pread64),
+                    "preadv" => Preadv::from_str(s).map(Self::Preadv),
+                    "preadv2" => Preadv2::from_str(s).map(Self::Preadv2),
+                    "pwritev" => Pwritev::from_str(s).map(Self::Pwritev),
+                    "pwritev2" => Pwritev2::from_str(s).map(Self::Pwritev2),
+                    "read" => Read::from_str(s).map(Self::Read),
+                    "readlink" => Readlink::from_str(s).map(Self::Readlink),
+                    "readlinkat" => Readlinkat::from_str(s).map(Self::Readlinkat),
+                    "readv" => Readv::from_str(s).map(Self::Readv),
+                    "rename" => Rename::from_str(s).map(Self::Rename),
+                    "renameat" => Renameat::from_str(s).map(Self::Renameat),
+                    "renameat2" => Renameat2::from_str(s).map(Self::Renameat2),
+                    "rmdir" => Rmdir::from_str(s).map(Self::Rmdir),
+                    "sendfile" => Sendfile::from_str(s).map(Self::Sendfile),
+                    "splice" => Splice::from_str(s).map(Self::Splice),
+                    "stat" => Stat::from_str(s).map(Self::Stat),
+                    "statx" => Statx::from_str(s).map(|x| Self::Statx(Box::new(x))),
+                    "symlink" => Symlink::from_str(s).map(Self::Symlink),
+                    "symlinkat" => Symlinkat::from_str(s).map(Self::Symlinkat),
+                    "unlink" => Unlink::from_str(s).map(Self::Unlink),
+                    "unlinkat" => Unlinkat::from_str(s).map(Self::Unlinkat),
+                    "utimensat" => Utimensat::from_str(s).map(Self::Utimensat),
+                    "vfork" => Vfork::from_str(s).map(Self::Vfork),
+                    "write" => Write::from_str(s).map(Self::Write),
+                    "writev" => Writev::from_str(s).map(Self::Writev),
+                    _ => return Generic::from_str(s).map(Self::Generic),
+                };
+                if res.is_ok() {
+                    return res;
+                }
+                return Generic::from_str(s).map(Self::Generic);
+            }
         }
-        if let Ok(syscall) = Faccessat2::from_str(s) {
-            return Ok(Self::Faccessat2(syscall));
-        }
-        if let Ok(syscall) = Fchdir::from_str(s) {
-            return Ok(Self::Fchdir(syscall));
-        }
-        if let Ok(syscall) = Fdatasync::from_str(s) {
-            return Ok(Self::Fdatasync(syscall));
-        }
-        if let Ok(syscall) = Fork::from_str(s) {
-            return Ok(Self::Fork(syscall));
-        }
-        if let Ok(syscall) = Fstat::from_str(s) {
-            return Ok(Self::Fstat(syscall));
-        }
-        if let Ok(syscall) = Fsync::from_str(s) {
-            return Ok(Self::Fsync(syscall));
-        }
-        if let Ok(syscall) = Ftruncate::from_str(s) {
-            return Ok(Self::Ftruncate(syscall));
-        }
-        if let Ok(syscall) = Getcwd::from_str(s) {
-            return Ok(Self::Getcwd(syscall));
-        }
-        if let Ok(syscall) = Getdents64::from_str(s) {
-            return Ok(Self::Getdents64(syscall));
-        }
-        if let Ok(syscall) = Getdents::from_str(s) {
-            return Ok(Self::Getdents(syscall));
-        }
-        if let Ok(syscall) = Link::from_str(s) {
-            return Ok(Self::Link(syscall));
-        }
-        if let Ok(syscall) = Linkat::from_str(s) {
-            return Ok(Self::Linkat(syscall));
-        }
-        if let Ok(syscall) = Lstat::from_str(s) {
-            return Ok(Self::Lstat(syscall));
-        }
-        if let Ok(syscall) = Mkdir::from_str(s) {
-            return Ok(Self::Mkdir(syscall));
-        }
-        if let Ok(syscall) = Mkdirat::from_str(s) {
-            return Ok(Self::Mkdirat(syscall));
-        }
-        if let Ok(syscall) = Mmap::from_str(s) {
-            return Ok(Self::Mmap(syscall));
-        }
-        if let Ok(syscall) = Newfstatat::from_str(s) {
-            return Ok(Self::Newfstatat(syscall));
-        }
-        if let Ok(syscall) = Open::from_str(s) {
-            return Ok(Self::Open(syscall));
-        }
-        if let Ok(syscall) = Openat::from_str(s) {
-            return Ok(Self::Openat(syscall));
-        }
-        if let Ok(syscall) = Openat2::from_str(s) {
-            return Ok(Self::Openat2(syscall));
-        }
-        if let Ok(syscall) = Pipe2::from_str(s) {
-            return Ok(Self::Pipe2(syscall));
-        }
-        if let Ok(syscall) = Pread64::from_str(s) {
-            return Ok(Self::Pread64(syscall));
-        }
-        if let Ok(syscall) = Preadv::from_str(s) {
-            return Ok(Self::Preadv(syscall));
-        }
-        if let Ok(syscall) = Preadv2::from_str(s) {
-            return Ok(Self::Preadv2(syscall));
-        }
-        if let Ok(syscall) = Pwritev::from_str(s) {
-            return Ok(Self::Pwritev(syscall));
-        }
-        if let Ok(syscall) = Pwritev2::from_str(s) {
-            return Ok(Self::Pwritev2(syscall));
-        }
-        if let Ok(syscall) = Read::from_str(s) {
-            return Ok(Self::Read(syscall));
-        }
-        if let Ok(syscall) = Readv::from_str(s) {
-            return Ok(Self::Readv(syscall));
-        }
-        if let Ok(syscall) = Readlinkat::from_str(s) {
-            return Ok(Self::Readlinkat(syscall));
-        }
-        if let Ok(syscall) = Readlink::from_str(s) {
-            return Ok(Self::Readlink(syscall));
-        }
-        if let Ok(syscall) = Rename::from_str(s) {
-            return Ok(Self::Rename(syscall));
-        }
-        if let Ok(syscall) = Renameat::from_str(s) {
-            return Ok(Self::Renameat(syscall));
-        }
-        if let Ok(syscall) = Renameat2::from_str(s) {
-            return Ok(Self::Renameat2(syscall));
-        }
-        if let Ok(syscall) = Rmdir::from_str(s) {
-            return Ok(Self::Rmdir(syscall));
-        }
-        if let Ok(syscall) = Sendfile::from_str(s) {
-            return Ok(Self::Sendfile(syscall));
-        }
-        if let Ok(syscall) = Splice::from_str(s) {
-            return Ok(Self::Splice(syscall));
-        }
-        if let Ok(syscall) = Stat::from_str(s) {
-            return Ok(Self::Stat(syscall));
-        }
-        if let Ok(syscall) = Statx::from_str(s) {
-            return Ok(Self::Statx(Box::new(syscall)));
-        }
-        if let Ok(syscall) = Symlink::from_str(s) {
-            return Ok(Self::Symlink(syscall));
-        }
-        if let Ok(syscall) = Symlinkat::from_str(s) {
-            return Ok(Self::Symlinkat(syscall));
-        }
-        if let Ok(syscall) = Unlink::from_str(s) {
-            return Ok(Self::Unlink(syscall));
-        }
-        if let Ok(syscall) = Unlinkat::from_str(s) {
-            return Ok(Self::Unlinkat(syscall));
-        }
-        if let Ok(syscall) = Utimensat::from_str(s) {
-            return Ok(Self::Utimensat(syscall));
-        }
-        if let Ok(syscall) = Vfork::from_str(s) {
-            return Ok(Self::Vfork(syscall));
-        }
-        if let Ok(syscall) = Write::from_str(s) {
-            return Ok(Self::Write(syscall));
-        }
-        if let Ok(syscall) = Writev::from_str(s) {
-            return Ok(Self::Writev(syscall));
-        }
+
         Generic::from_str(s).map(Self::Generic)
     }
 }
