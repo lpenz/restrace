@@ -12,21 +12,41 @@ use std::str::FromStr;
 
 /// A string that `strace` prints as a double-quoted, escaped C string.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Quoted(pub CString);
+pub struct Quoted {
+    /// The string.
+    pub string: CString,
+    /// Whether the string was truncated with `...` by strace.
+    pub truncated: bool,
+}
 
 impl Quoted {
     /// Creates a new `Quoted` value, failing if `value` contains an interior
     /// NUL byte.
     pub fn new(value: impl Into<Vec<u8>>) -> Result<Self, ParseError> {
         CString::new(value)
-            .map(Self)
+            .map(|s| Self {
+                string: s,
+                truncated: false,
+            })
             .map_err(|_| ParseError::new("quoted string", ""))
+    }
+}
+
+impl std::ops::Deref for Quoted {
+    type Target = CString;
+
+    fn deref(&self) -> &Self::Target {
+        &self.string
     }
 }
 
 impl fmt::Display for Quoted {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.0.to_string_lossy())
+        write!(f, "{:?}", self.string.to_string_lossy())?;
+        if self.truncated {
+            f.write_str("...")?;
+        }
+        Ok(())
     }
 }
 
@@ -40,9 +60,12 @@ impl FromStr for Quoted {
 
 impl BufferValue for Quoted {
     fn decode_buffer(input: &str) -> Result<Self, ParseError> {
-        let s = parse::unquote(input.trim(), "quoted string")?;
+        let input_trim = input.trim();
+        let truncated = input_trim.ends_with("...");
+        let input_trim = input_trim.strip_suffix("...").unwrap_or(input_trim);
+        let s = parse::unquote(input_trim, "quoted string")?;
         CString::new(s)
-            .map(Self)
+            .map(|string| Self { string, truncated })
             .map_err(|_| ParseError::new("quoted string", input))
     }
 }

@@ -97,7 +97,7 @@ mod tests {
     use crate::syscalls::errno::Errno;
 
     fn decoded(value: &[u8]) -> Buffer<Bytes> {
-        Buffer::Decoded(Bytes(value.to_vec()))
+        Buffer::Decoded(Bytes::new(value.to_vec()))
     }
 
     #[test]

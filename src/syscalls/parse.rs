@@ -95,9 +95,12 @@ pub(crate) fn split_args_nested(input: &str) -> Vec<&str> {
     parts
 }
 
-/// Parses a double-quoted string as formatted by the `{:?}` placeholder.
+/// Parses a double-quoted string as formatted by the `{:?}` placeholder,
+/// allowing a trailing truncation marker `...` after the closing quote.
 pub(crate) fn unquote(input: &str, part: &'static str) -> Result<String, ParseError> {
     let error = || ParseError::new(part, input);
+    let input = input.trim();
+    let input = input.strip_suffix("...").unwrap_or(input);
     let body = input
         .strip_prefix('"')
         .and_then(|s| s.strip_suffix('"'))

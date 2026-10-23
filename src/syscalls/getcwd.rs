@@ -85,10 +85,9 @@ impl FromStr for Getcwd {
 mod tests {
     use super::*;
     use crate::syscalls::errno::Errno;
-    use std::ffi::CString;
 
     fn path(value: &str) -> Buffer<Quoted> {
-        Buffer::Decoded(Quoted(CString::new(value).unwrap()))
+        Buffer::Decoded(Quoted::new(value).unwrap())
     }
 
     #[test]

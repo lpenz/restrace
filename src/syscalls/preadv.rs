@@ -122,7 +122,7 @@ mod tests {
     use crate::syscalls::iovec::Iovec;
 
     fn decoded(value: &[u8]) -> Buffer<Bytes> {
-        Buffer::Decoded(Bytes(value.to_vec()))
+        Buffer::Decoded(Bytes::new(value.to_vec()))
     }
 
     fn list(entries: Vec<(&[u8], u64)>) -> Buffer<IovecList> {

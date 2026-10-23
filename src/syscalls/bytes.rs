@@ -18,7 +18,43 @@ use std::str::FromStr;
 /// `strace` quotes the contents of a buffer such as the one of
 /// [`read(2)`](super::read::Read), which may hold any byte, NUL included.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Bytes(pub Vec<u8>);
+pub struct Bytes {
+    /// The bytes.
+    pub bytes: Vec<u8>,
+    /// Whether the string was truncated with `...` by strace.
+    pub truncated: bool,
+}
+
+impl Bytes {
+    /// Creates a new `Bytes` value.
+    #[must_use]
+    pub fn new(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes,
+            truncated: false,
+        }
+    }
+}
+
+impl From<Vec<u8>> for Bytes {
+    fn from(bytes: Vec<u8>) -> Self {
+        Self::new(bytes)
+    }
+}
+
+impl std::ops::Deref for Bytes {
+    type Target = Vec<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.bytes
+    }
+}
+
+impl std::ops::DerefMut for Bytes {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.bytes
+    }
+}
 
 /// The byte a symbolic escape stands for, as `strace` prints it.
 const fn escape_byte(c: char) -> Option<u8> {
@@ -39,7 +75,7 @@ const fn escape_byte(c: char) -> Option<u8> {
 impl fmt::Display for Bytes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("\"")?;
-        for (i, &byte) in self.0.iter().enumerate() {
+        for (i, &byte) in self.bytes.iter().enumerate() {
             match byte {
                 b'"' | b'\\' => write!(f, "\\{}", char::from(byte))?,
                 b'\n' => f.write_str("\\n")?,
@@ -49,7 +85,7 @@ impl fmt::Display for Bytes {
                 0x0c => f.write_str("\\f")?,
                 0x20..=0x7e => write!(f, "{}", char::from(byte))?,
                 _ => {
-                    if matches!(self.0.get(i + 1).copied(), Some(b'0'..=b'7')) {
+                    if matches!(self.bytes.get(i + 1).copied(), Some(b'0'..=b'7')) {
                         write!(f, "\\{byte:03o}")?;
                     } else {
                         write!(f, "\\{byte:o}")?;
@@ -57,15 +93,21 @@ impl fmt::Display for Bytes {
                 }
             }
         }
-        f.write_str("\"")
+        f.write_str("\"")?;
+        if self.truncated {
+            f.write_str("...")?;
+        }
+        Ok(())
     }
 }
 
 impl BufferValue for Bytes {
     fn decode_buffer(input: &str) -> Result<Self, ParseError> {
         let error = || ParseError::new("byte string", input);
+        let input = input.trim();
+        let truncated = input.ends_with("...");
+        let input = input.strip_suffix("...").unwrap_or(input);
         let body = input
-            .trim()
             .strip_prefix('"')
             .and_then(|s| s.strip_suffix('"'))
             .ok_or_else(error)?;
@@ -73,8 +115,8 @@ impl BufferValue for Bytes {
         let mut chars = body.chars();
         while let Some(c) = chars.next() {
             if c != '\\' {
-                let mut buf = [0_u8; 4];
-                out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+                let mut buf_arr = [0_u8; 4];
+                out.extend_from_slice(c.encode_utf8(&mut buf_arr).as_bytes());
                 continue;
             }
             let escape = chars.next().ok_or_else(error)?;
@@ -105,7 +147,10 @@ impl BufferValue for Bytes {
                 _ => return Err(error()),
             }
         }
-        Ok(Self(out))
+        Ok(Self {
+            bytes: out,
+            truncated,
+        })
     }
 }
 
@@ -123,7 +168,7 @@ mod tests {
     use super::*;
 
     fn bytes(value: &[u8]) -> Bytes {
-        Bytes(value.to_vec())
+        Bytes::new(value.to_vec())
     }
 
     #[test]

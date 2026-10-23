@@ -232,9 +232,9 @@ async fn parses_read() {
             restrace::Action::Read(read) => read.buf.decoded(),
             _ => None,
         })
-        .find(|buf| buf.0 == b"hi\n")
+        .find(|buf| buf.bytes == b"hi\n")
         .expect("expected a parsed read(2) with the pipe bytes");
-    assert_eq!(buf.0, b"hi\n");
+    assert_eq!(buf.bytes, b"hi\n");
 }
 
 /// Runs a `/bin/pwd`, which resolves the current working directory with
@@ -253,9 +253,9 @@ async fn parses_getcwd() {
             restrace::Action::Getcwd(getcwd) => getcwd.buf.decoded(),
             _ => None,
         })
-        .find(|buf| !buf.0.to_bytes().is_empty())
+        .find(|buf| !buf.to_string_lossy().is_empty())
         .expect("expected a parsed getcwd(2) with the current directory");
-    assert!(buf.0.to_bytes().starts_with(b"/"));
+    assert!(buf.to_string_lossy().as_bytes().starts_with(b"/"));
 }
 
 /// Runs a shell command line whose builtin `printf` writes to its standard
@@ -274,9 +274,9 @@ async fn parses_write() {
             restrace::Action::Write(write) => write.buf.decoded(),
             _ => None,
         })
-        .find(|buf| buf.0 == b"hi\n")
+        .find(|buf| buf.bytes == b"hi\n")
         .expect("expected a parsed write(2) with the buffer bytes");
-    assert_eq!(buf.0, b"hi\n");
+    assert_eq!(buf.bytes, b"hi\n");
 }
 
 /// Runs a command that calls `utimensat(2)`, and checks that the call parses
@@ -415,7 +415,7 @@ async fn parses_writev() {
                 iovec
                     .base
                     .decoded()
-                    .is_some_and(|bytes| !bytes.0.is_empty())
+                    .is_some_and(|bytes| !bytes.bytes.is_empty())
             })
         })
         .expect("expected a parsed writev(2) with a decoded buffer");
@@ -486,9 +486,12 @@ async fn parses_pwritev2() {
             _ => None,
         })
         .find(|list| {
-            list.as_slice()
-                .iter()
-                .any(|iovec| iovec.base.decoded().is_some_and(|bytes| bytes.0 == b"hi\n"))
+            list.as_slice().iter().any(|iovec| {
+                iovec
+                    .base
+                    .decoded()
+                    .is_some_and(|bytes| bytes.bytes == b"hi\n")
+            })
         })
         .expect("expected a parsed pwritev2(2) with a decoded buffer");
     assert!(!decoded.is_empty());

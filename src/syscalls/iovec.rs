@@ -130,7 +130,7 @@ mod tests {
     use super::*;
 
     fn decoded(value: &[u8]) -> Buffer<Bytes> {
-        Buffer::Decoded(Bytes(value.to_vec()))
+        Buffer::Decoded(Bytes::new(value.to_vec()))
     }
 
     fn iovec(base: Buffer<Bytes>, len: u64) -> Iovec {

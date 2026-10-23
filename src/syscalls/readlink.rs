@@ -97,7 +97,7 @@ mod tests {
     use crate::syscalls::quoted::Quoted;
 
     fn target() -> Buffer<Quoted> {
-        Buffer::Decoded(Quoted(CString::new("/tmp/opencode/test_rl").unwrap()))
+        Buffer::Decoded(Quoted::new(b"/tmp/opencode/test_rl").unwrap())
     }
 
     #[test]
