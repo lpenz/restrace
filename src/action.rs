@@ -11,7 +11,7 @@ use crate::syscalls::{
     Getdents, Getdents64, Link, Linkat, Lstat, Mkdir, Mkdirat, Mmap, Newfstatat, Open, Openat,
     Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Pwrite64, Pwritev, Pwritev2, Read,
     Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx,
-    Symlink, Symlinkat, Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
+    Symlink, Symlinkat, Truncate, Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -131,6 +131,8 @@ pub enum Action {
     Symlink(Symlink),
     /// A `symlinkat(2)` call.
     Symlinkat(Symlinkat),
+    /// A `truncate(2)` call.
+    Truncate(Truncate),
     /// An `unlink(2)` call.
     Unlink(Unlink),
     /// An `unlinkat(2)` call.
@@ -205,6 +207,7 @@ impl fmt::Display for Action {
             Self::Statx(syscall) => syscall.fmt(f),
             Self::Symlink(syscall) => syscall.fmt(f),
             Self::Symlinkat(syscall) => syscall.fmt(f),
+            Self::Truncate(syscall) => syscall.fmt(f),
             Self::Unlink(syscall) => syscall.fmt(f),
             Self::Unlinkat(syscall) => syscall.fmt(f),
             Self::Utimensat(syscall) => syscall.fmt(f),
@@ -285,6 +288,7 @@ impl FromStr for Action {
                     "statx" => Statx::from_str(s).map(|x| Self::Statx(Box::new(x))),
                     "symlink" => Symlink::from_str(s).map(Self::Symlink),
                     "symlinkat" => Symlinkat::from_str(s).map(Self::Symlinkat),
+                    "truncate" => Truncate::from_str(s).map(Self::Truncate),
                     "unlink" => Unlink::from_str(s).map(Self::Unlink),
                     "unlinkat" => Unlinkat::from_str(s).map(Self::Unlinkat),
                     "utimensat" => Utimensat::from_str(s).map(Self::Utimensat),
@@ -365,6 +369,7 @@ mod tests {
         let is_statx: fn(&Action) -> bool = |s| matches!(s, Action::Statx(_));
         let is_symlink: fn(&Action) -> bool = |s| matches!(s, Action::Symlink(_));
         let is_symlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Symlinkat(_));
+        let is_truncate: fn(&Action) -> bool = |s| matches!(s, Action::Truncate(_));
         let is_unlink: fn(&Action) -> bool = |s| matches!(s, Action::Unlink(_));
         let is_unlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Unlinkat(_));
         let is_vfork: fn(&Action) -> bool = |s| matches!(s, Action::Vfork(_));
@@ -484,6 +489,7 @@ mod tests {
             ),
             ("symlink(\"t\", \"l\") = 0", is_symlink),
             ("symlinkat(\"t\", AT_FDCWD, \"l\") = 0", is_symlinkat),
+            ("truncate(\"/tmp/file\", 1024) = 0", is_truncate),
             ("unlink(\"/f\") = 0", is_unlink),
             ("unlinkat(AT_FDCWD, \"/f\", 0) = 0", is_unlinkat),
             ("vfork() = 123", is_vfork),
@@ -559,6 +565,8 @@ mod tests {
             "faccessat2(AT_FDCWD, \"/f\", R_OK, AT_EACCESS) = 0",
             "unlinkat(AT_FDCWD, \"/f\", 0) = -1 ENOENT",
             "symlinkat(\"t\", AT_FDCWD, \"l\") = -1 EEXIST",
+            "truncate(\"/tmp/file\", 1024) = 0",
+            "truncate(\"/tmp/file\", 0) = -1 EINVAL",
             "linkat(AT_FDCWD, \"a\", AT_FDCWD, \"b\", AT_SYMLINK_FOLLOW) = -1 EPERM",
             "clone3({flags=CLONE_VM, exit_signal=SIGCHLD}, 88) = -1 EPERM",
             "splice(5, [5], 4, NULL, 64, SPLICE_F_MOVE) = 64",

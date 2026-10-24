@@ -417,6 +417,34 @@ async fn parses_ftruncate() {
     );
 }
 
+/// Runs a Python one-liner whose `os.truncate` call makes the traced process
+/// issue a `truncate(2)`, and checks that the call parses as `Action::Truncate`.
+#[::tokio::test]
+async fn parses_truncate() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-truncate-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; fd = os.open({path:?}, os.O_CREAT | os.O_RDWR, 0o644); \
+         os.write(fd, b'hello'); os.close(fd); os.truncate({path:?}, 3); os.unlink({path:?})",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+
+    let truncate = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Truncate(truncate) => Some(truncate),
+            _ => None,
+        })
+        .expect("expected a parsed truncate(2)");
+    assert_eq!(truncate.length, 3);
+    assert!(truncate.result.is_ok(), "expected a successful truncate(2)");
+}
+
 /// Runs a shell command line whose `ldd(1)` writes its report with
 /// `writev(2)`, and checks that the call parses as `Action::Writev` with the
 /// bytes decoded from one of its buffers.
