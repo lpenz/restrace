@@ -279,6 +279,29 @@ async fn parses_write() {
     assert_eq!(buf.bytes, b"hi\n");
 }
 
+/// Runs a command that writes via `pwrite(2)`, and checks that the call
+/// parses as `Action::Pwrite64`.
+#[::tokio::test]
+async fn parses_pwrite64() {
+    if !strace_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-pwrite64-{}.txt", std::process::id()));
+    let lines = trace_shell(&format!(
+        "python3 -c \"open('{}','w').write('x'); import os; os.pwrite(os.open('{}',os.O_RDWR), b'hi\\n', 0)\"",
+        path.display(),
+        path.display()
+    ))
+    .await;
+    let _ = std::fs::remove_file(&path);
+    assert!(lines.iter().any(|line| {
+        matches!(
+            &line.action,
+            restrace::Action::Pwrite64(pwrite) if pwrite.buf.decoded().is_some_and(|b| b.bytes == b"hi\n")
+        )
+    }));
+}
+
 /// Runs a command that calls `utimensat(2)`, and checks that the call parses
 /// as `Action::Utimensat`.
 #[::tokio::test]

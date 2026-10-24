@@ -9,9 +9,9 @@ use crate::syscalls::{
     Access, Chdir, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3, Execve, Execveat,
     Faccessat, Faccessat2, Fchdir, Fdatasync, Fork, Fstat, Fsync, Ftruncate, Generic, Getcwd,
     Getdents, Getdents64, Link, Linkat, Lstat, Mkdir, Mkdirat, Mmap, Newfstatat, Open, Openat,
-    Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Pwritev, Pwritev2, Read, Readlink,
-    Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx, Symlink,
-    Symlinkat, Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
+    Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Pwrite64, Pwritev, Pwritev2, Read,
+    Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx,
+    Symlink, Symlinkat, Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -93,6 +93,8 @@ pub enum Action {
     Pipe2(Pipe2),
     /// A `pread64(2)` call.
     Pread64(Pread64),
+    /// A `pwrite64(2)` call.
+    Pwrite64(Pwrite64),
     /// A `preadv(2)` call.
     Preadv(Preadv),
     /// A `preadv2(2)` call.
@@ -184,6 +186,7 @@ impl fmt::Display for Action {
             Self::Openat2(syscall) => syscall.fmt(f),
             Self::Pipe2(syscall) => syscall.fmt(f),
             Self::Pread64(syscall) => syscall.fmt(f),
+            Self::Pwrite64(syscall) => syscall.fmt(f),
             Self::Preadv(syscall) => syscall.fmt(f),
             Self::Preadv2(syscall) => syscall.fmt(f),
             Self::Pwritev(syscall) => syscall.fmt(f),
@@ -263,6 +266,7 @@ impl FromStr for Action {
                     "openat2" => Openat2::from_str(s).map(Self::Openat2),
                     "pipe2" => Pipe2::from_str(s).map(Self::Pipe2),
                     "pread64" => Pread64::from_str(s).map(Self::Pread64),
+                    "pwrite64" => Pwrite64::from_str(s).map(Self::Pwrite64),
                     "preadv" => Preadv::from_str(s).map(Self::Preadv),
                     "preadv2" => Preadv2::from_str(s).map(Self::Preadv2),
                     "pwritev" => Pwritev::from_str(s).map(Self::Pwritev),
@@ -342,6 +346,7 @@ mod tests {
         let is_openat2: fn(&Action) -> bool = |s| matches!(s, Action::Openat2(_));
         let is_pipe2: fn(&Action) -> bool = |s| matches!(s, Action::Pipe2(_));
         let is_pread64: fn(&Action) -> bool = |s| matches!(s, Action::Pread64(_));
+        let is_pwrite64: fn(&Action) -> bool = |s| matches!(s, Action::Pwrite64(_));
         let is_preadv: fn(&Action) -> bool = |s| matches!(s, Action::Preadv(_));
         let is_preadv2: fn(&Action) -> bool = |s| matches!(s, Action::Preadv2(_));
         let is_pwritev: fn(&Action) -> bool = |s| matches!(s, Action::Pwritev(_));
@@ -437,6 +442,7 @@ mod tests {
                 "preadv2(3, [{iov_base=\"data\", iov_len=4}], 1, 1024, RWF_NOWAIT) = 4",
                 is_preadv2,
             ),
+            ("pwrite64(1, \"hi\\n\", 3, 1024) = 3", is_pwrite64),
             (
                 "pwritev(3, [{iov_base=\"data\", iov_len=4}], 1, 1024) = 4",
                 is_pwritev,
@@ -530,6 +536,8 @@ mod tests {
             "preadv(3, 0x1, 2, 0) = -1 EFAULT",
             "preadv2(3, [{iov_base=\"abcd\", iov_len=4}], 1, 1024, RWF_NOWAIT) = 4",
             "preadv2(3, 0x1, 2, 0, 0) = -1 EFAULT",
+            "pwrite64(1, \"hi\\n\", 3, 1024) = 3",
+            "pwrite64(3, 0x7fff1234, 64, 512) = -1 EFAULT",
             "pwritev(3, [{iov_base=\"abcd\", iov_len=4}, {iov_base=\"\", iov_len=8}], 2, 1024) = 4",
             "pwritev(3, 0x1, 2, 0) = -1 EFAULT",
             "pwritev2(3, [{iov_base=\"abcd\", iov_len=4}], 1, 1024, RWF_NOWAIT) = 4",

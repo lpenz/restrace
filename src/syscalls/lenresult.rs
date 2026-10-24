@@ -17,6 +17,7 @@ use std::str::FromStr;
 /// [`pread64(2)`](super::pread64::Pread64),
 /// [`preadv(2)`](super::preadv::Preadv),
 /// [`preadv2(2)`](super::preadv2::Preadv2),
+/// [`pwrite64(2)`](super::pwrite64::Pwrite64),
 /// [`readlink(2)`](super::readlink::Readlink),
 /// [`readlinkat(2)`](super::readlinkat::Readlinkat),
 /// [`write(2)`](super::write::Write),

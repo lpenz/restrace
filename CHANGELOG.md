@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A typed `lstat(2)` record, carried as the `Action::Lstat` variant.
 - A typed `getcwd(2)` record, carried as the `Action::Getcwd` variant, with the
   `Quoted` buffer-value type.
+- A typed `pwrite64(2)` record, carried as the `Action::Pwrite64` variant.
 - A typed `getdents(2)` record, carried as the `Action::Getdents` variant, with
   the `DirentList`, `Dirent` and `DirentType` entry types and the `LenResult`
   return type.
