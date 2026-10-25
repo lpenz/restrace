@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A typed `getcwd(2)` record, carried as the `Action::Getcwd` variant, with the
   `Quoted` buffer-value type.
 - A typed `pwrite64(2)` record, carried as the `Action::Pwrite64` variant.
+- A typed `chmod(2)` record, carried as the `Action::Chmod` variant, with the `ChmodMode` mode type.
+- A typed `fchmod(2)` record, carried as the `Action::Fchmod` variant, with the `ChmodMode` mode type.
+- A typed `fchmodat(2)` record, carried as the `Action::Fchmodat` variant, with the `ChmodMode` mode type.
 - A typed `truncate(2)` record, carried as the `Action::Truncate` variant.
 - A typed `getdents(2)` record, carried as the `Action::Getdents` variant, with
   the `DirentList`, `Dirent` and `DirentType` entry types and the `LenResult`

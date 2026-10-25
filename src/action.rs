@@ -6,12 +6,13 @@
 
 use crate::exit::Exit;
 use crate::syscalls::{
-    Access, Chdir, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3, Execve, Execveat,
-    Faccessat, Faccessat2, Fchdir, Fdatasync, Fork, Fstat, Fsync, Ftruncate, Generic, Getcwd,
-    Getdents, Getdents64, Link, Linkat, Lstat, Mkdir, Mkdirat, Mmap, Newfstatat, Open, Openat,
-    Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Pwrite64, Pwritev, Pwritev2, Read,
-    Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx,
-    Symlink, Symlinkat, Truncate, Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
+    Access, Chdir, Chmod, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3, Execve,
+    Execveat, Faccessat, Faccessat2, Fchdir, Fchmod, Fchmodat, Fdatasync, Fork, Fstat, Fsync,
+    Ftruncate, Generic, Getcwd, Getdents, Getdents64, Link, Linkat, Lstat, Mkdir, Mkdirat, Mmap,
+    Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Pwrite64,
+    Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir,
+    Sendfile, Splice, Stat, Statx, Symlink, Symlinkat, Truncate, Unlink, Unlinkat, Utimensat,
+    Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -25,6 +26,8 @@ pub enum Action {
     Access(Access),
     /// A `chdir(2)` call.
     Chdir(Chdir),
+    /// A `chmod(2)` call.
+    Chmod(Chmod),
     /// A `clone(2)` call.
     Clone(Clone),
     /// A `clone3(2)` call.
@@ -53,6 +56,10 @@ pub enum Action {
     Faccessat2(Faccessat2),
     /// An `fchdir(2)` call.
     Fchdir(Fchdir),
+    /// An `fchmod(2)` call.
+    Fchmod(Fchmod),
+    /// An `fchmodat(2)` call.
+    Fchmodat(Fchmodat),
     /// An `fdatasync(2)` call.
     Fdatasync(Fdatasync),
     /// A `fork(2)` call.
@@ -154,6 +161,7 @@ impl fmt::Display for Action {
         match self {
             Self::Access(syscall) => syscall.fmt(f),
             Self::Chdir(syscall) => syscall.fmt(f),
+            Self::Chmod(syscall) => syscall.fmt(f),
             Self::Clone(syscall) => syscall.fmt(f),
             Self::Clone3(syscall) => syscall.fmt(f),
             Self::Close(syscall) => syscall.fmt(f),
@@ -168,6 +176,8 @@ impl fmt::Display for Action {
             Self::Faccessat(syscall) => syscall.fmt(f),
             Self::Faccessat2(syscall) => syscall.fmt(f),
             Self::Fchdir(syscall) => syscall.fmt(f),
+            Self::Fchmod(syscall) => syscall.fmt(f),
+            Self::Fchmodat(syscall) => syscall.fmt(f),
             Self::Fdatasync(syscall) => syscall.fmt(f),
             Self::Fork(syscall) => syscall.fmt(f),
             Self::Fstat(syscall) => syscall.fmt(f),
@@ -236,6 +246,7 @@ impl FromStr for Action {
                 let res = match name {
                     "access" => Access::from_str(s).map(Self::Access),
                     "chdir" => Chdir::from_str(s).map(Self::Chdir),
+                    "chmod" => Chmod::from_str(s).map(Self::Chmod),
                     "clone" => Clone::from_str(s).map(Self::Clone),
                     "clone3" => Clone3::from_str(s).map(Self::Clone3),
                     "close" => Close::from_str(s).map(Self::Close),
@@ -249,6 +260,8 @@ impl FromStr for Action {
                     "faccessat" => Faccessat::from_str(s).map(Self::Faccessat),
                     "faccessat2" => Faccessat2::from_str(s).map(Self::Faccessat2),
                     "fchdir" => Fchdir::from_str(s).map(Self::Fchdir),
+                    "fchmod" => Fchmod::from_str(s).map(Self::Fchmod),
+                    "fchmodat" => Fchmodat::from_str(s).map(Self::Fchmodat),
                     "fdatasync" => Fdatasync::from_str(s).map(Self::Fdatasync),
                     "fork" => Fork::from_str(s).map(Self::Fork),
                     "fstat" => Fstat::from_str(s).map(Self::Fstat),
@@ -330,6 +343,9 @@ mod tests {
         let is_faccessat: fn(&Action) -> bool = |s| matches!(s, Action::Faccessat(_));
         let is_faccessat2: fn(&Action) -> bool = |s| matches!(s, Action::Faccessat2(_));
         let is_fchdir: fn(&Action) -> bool = |s| matches!(s, Action::Fchdir(_));
+        let is_fchmod: fn(&Action) -> bool = |s| matches!(s, Action::Fchmod(_));
+        let is_fchmodat: fn(&Action) -> bool = |s| matches!(s, Action::Fchmodat(_));
+        let is_chmod: fn(&Action) -> bool = |s| matches!(s, Action::Chmod(_));
         let is_fdatasync: fn(&Action) -> bool = |s| matches!(s, Action::Fdatasync(_));
         let is_fork: fn(&Action) -> bool = |s| matches!(s, Action::Fork(_));
         let is_fstat: fn(&Action) -> bool = |s| matches!(s, Action::Fstat(_));
@@ -409,6 +425,9 @@ mod tests {
                 is_faccessat2,
             ),
             ("fchdir(0) = 0", is_fchdir),
+            ("fchmod(3, 0600) = 0", is_fchmod),
+            ("fchmodat(AT_FDCWD, \"/tmp/f\", 0755) = 0", is_fchmodat),
+            ("chmod(\"/tmp/f\", 0644) = 0", is_chmod),
             ("fdatasync(3) = 0", is_fdatasync),
             ("fork() = 123", is_fork),
             ("fstat(1, 0x1) = -1 EBADF", is_fstat),
@@ -530,6 +549,12 @@ mod tests {
             "dup3(0, 4, O_CLOEXEC) = 4",
             "fsync(3) = 0",
             "fsync(3) = -1 EBADF",
+            "fchmod(3, 0600) = 0",
+            "fchmod(3, 0600) = -1 EBADF",
+            "fchmodat(AT_FDCWD, \"/tmp/f\", 0755) = 0",
+            "fchmodat(AT_FDCWD, \"/tmp/f\", 0755) = -1 ENOENT",
+            "chmod(\"/tmp/f\", 0644) = 0",
+            "chmod(\"/tmp/f\", 0644) = -1 EACCES",
             "fdatasync(3) = 0",
             "fdatasync(3) = -1 EBADF",
             "ftruncate(3, 1024) = 0",

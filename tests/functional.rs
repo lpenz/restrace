@@ -258,6 +258,81 @@ async fn parses_getcwd() {
     assert!(buf.to_string_lossy().as_bytes().starts_with(b"/"));
 }
 
+/// Runs a Python one-liner whose `os.chmod` call makes the traced process
+/// issue a `chmod(2)`, and checks that the call parses as `Action::Chmod`.
+#[::tokio::test]
+async fn parses_chmod() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-chmod-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; fd = os.open({path:?}, os.O_CREAT | os.O_RDWR, 0o644); \
+         os.close(fd); os.chmod({path:?}, 0o600); os.unlink({path:?})",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+
+    let chmod = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Chmod(chmod) => Some(chmod),
+            _ => None,
+        })
+        .expect("expected a parsed chmod(2)");
+    assert!(chmod.result.is_ok(), "expected a successful chmod(2)");
+}
+
+/// Runs a Python one-liner whose `os.fchmod` call makes the traced process
+/// issue a `fchmod(2)`, and checks that the call parses as `Action::Fchmod`.
+#[::tokio::test]
+async fn parses_fchmod() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-fchmod-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; fd = os.open({path:?}, os.O_CREAT | os.O_RDWR, 0o644); \
+         os.fchmod(fd, 0o600); os.close(fd); os.unlink({path:?})",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+
+    let fchmod = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Fchmod(fchmod) => Some(fchmod),
+            _ => None,
+        })
+        .expect("expected a parsed fchmod(2)");
+    assert!(fchmod.result.is_ok(), "expected a successful fchmod(2)");
+}
+
+/// Runs a Python one-liner whose `os.chmod` via relative path or just ensures
+/// `fchmodat(2)` can be parsed if seen; we also test via shell chmod which may
+/// use fchmodat.
+#[::tokio::test]
+async fn parses_fchmodat() {
+    if !strace_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-fchmodat-{}.txt", std::process::id()));
+    let script = format!("touch {p}; chmod 0600 {p}; rm {p}", p = path.display());
+    let lines = trace_shell(&script).await;
+
+    let fchmodat = lines.iter().find_map(|line| match &line.action {
+        restrace::Action::Fchmodat(fchmodat) => Some(fchmodat),
+        _ => None,
+    });
+    if let Some(fchmodat) = fchmodat {
+        assert!(fchmodat.result.is_ok(), "expected a successful fchmodat(2)");
+    }
+}
+
 /// Runs a shell command line whose builtin `printf` writes to its standard
 /// output, and checks that the call parses as `Action::Write` with the bytes
 /// decoded from its buffer.
