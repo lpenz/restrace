@@ -6,13 +6,13 @@
 
 use crate::exit::Exit;
 use crate::syscalls::{
-    Access, Chdir, Chmod, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3, Execve,
-    Execveat, Faccessat, Faccessat2, Fchdir, Fchmod, Fchmodat, Fdatasync, Fork, Fstat, Fsync,
-    Ftruncate, Generic, Getcwd, Getdents, Getdents64, Link, Linkat, Lstat, Mkdir, Mkdirat, Mmap,
-    Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Pwrite64,
-    Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename, Renameat, Renameat2, Rmdir,
-    Sendfile, Splice, Stat, Statx, Symlink, Symlinkat, Truncate, Unlink, Unlinkat, Utimensat,
-    Vfork, Write, Writev,
+    Access, Chdir, Chmod, Chown, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3,
+    Execve, Execveat, Faccessat, Faccessat2, Fchdir, Fchmod, Fchmodat, Fchown, Fchownat, Fdatasync,
+    Fork, Fstat, Fsync, Ftruncate, Generic, Getcwd, Getdents, Getdents64, Lchown, Link, Linkat,
+    Lstat, Mkdir, Mkdirat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64,
+    Preadv, Preadv2, Pwrite64, Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename,
+    Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx, Symlink, Symlinkat, Truncate,
+    Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -28,6 +28,8 @@ pub enum Action {
     Chdir(Chdir),
     /// A `chmod(2)` call.
     Chmod(Chmod),
+    /// A `chown(2)` call.
+    Chown(Chown),
     /// A `clone(2)` call.
     Clone(Clone),
     /// A `clone3(2)` call.
@@ -60,6 +62,10 @@ pub enum Action {
     Fchmod(Fchmod),
     /// An `fchmodat(2)` call.
     Fchmodat(Fchmodat),
+    /// An `fchown(2)` call.
+    Fchown(Fchown),
+    /// An `fchownat(2)` call.
+    Fchownat(Fchownat),
     /// An `fdatasync(2)` call.
     Fdatasync(Fdatasync),
     /// A `fork(2)` call.
@@ -76,6 +82,8 @@ pub enum Action {
     Getdents(Getdents),
     /// A `getdents64(2)` call.
     Getdents64(Getdents64),
+    /// An `lchown(2)` call.
+    Lchown(Lchown),
     /// A `link(2)` call.
     Link(Link),
     /// A `linkat(2)` call.
@@ -162,6 +170,7 @@ impl fmt::Display for Action {
             Self::Access(syscall) => syscall.fmt(f),
             Self::Chdir(syscall) => syscall.fmt(f),
             Self::Chmod(syscall) => syscall.fmt(f),
+            Self::Chown(syscall) => syscall.fmt(f),
             Self::Clone(syscall) => syscall.fmt(f),
             Self::Clone3(syscall) => syscall.fmt(f),
             Self::Close(syscall) => syscall.fmt(f),
@@ -178,6 +187,8 @@ impl fmt::Display for Action {
             Self::Fchdir(syscall) => syscall.fmt(f),
             Self::Fchmod(syscall) => syscall.fmt(f),
             Self::Fchmodat(syscall) => syscall.fmt(f),
+            Self::Fchown(syscall) => syscall.fmt(f),
+            Self::Fchownat(syscall) => syscall.fmt(f),
             Self::Fdatasync(syscall) => syscall.fmt(f),
             Self::Fork(syscall) => syscall.fmt(f),
             Self::Fstat(syscall) => syscall.fmt(f),
@@ -186,6 +197,7 @@ impl fmt::Display for Action {
             Self::Getcwd(syscall) => syscall.fmt(f),
             Self::Getdents(syscall) => syscall.fmt(f),
             Self::Getdents64(syscall) => syscall.fmt(f),
+            Self::Lchown(syscall) => syscall.fmt(f),
             Self::Link(syscall) => syscall.fmt(f),
             Self::Linkat(syscall) => syscall.fmt(f),
             Self::Lstat(syscall) => syscall.fmt(f),
@@ -247,6 +259,7 @@ impl FromStr for Action {
                     "access" => Access::from_str(s).map(Self::Access),
                     "chdir" => Chdir::from_str(s).map(Self::Chdir),
                     "chmod" => Chmod::from_str(s).map(Self::Chmod),
+                    "chown" => Chown::from_str(s).map(Self::Chown),
                     "clone" => Clone::from_str(s).map(Self::Clone),
                     "clone3" => Clone3::from_str(s).map(Self::Clone3),
                     "close" => Close::from_str(s).map(Self::Close),
@@ -262,6 +275,8 @@ impl FromStr for Action {
                     "fchdir" => Fchdir::from_str(s).map(Self::Fchdir),
                     "fchmod" => Fchmod::from_str(s).map(Self::Fchmod),
                     "fchmodat" => Fchmodat::from_str(s).map(Self::Fchmodat),
+                    "fchown" => Fchown::from_str(s).map(Self::Fchown),
+                    "fchownat" => Fchownat::from_str(s).map(Self::Fchownat),
                     "fdatasync" => Fdatasync::from_str(s).map(Self::Fdatasync),
                     "fork" => Fork::from_str(s).map(Self::Fork),
                     "fstat" => Fstat::from_str(s).map(Self::Fstat),
@@ -270,6 +285,7 @@ impl FromStr for Action {
                     "getcwd" => Getcwd::from_str(s).map(Self::Getcwd),
                     "getdents" => Getdents::from_str(s).map(Self::Getdents),
                     "getdents64" => Getdents64::from_str(s).map(Self::Getdents64),
+                    "lchown" => Lchown::from_str(s).map(Self::Lchown),
                     "link" => Link::from_str(s).map(Self::Link),
                     "linkat" => Linkat::from_str(s).map(Self::Linkat),
                     "lstat" => Lstat::from_str(s).map(Self::Lstat),
@@ -345,7 +361,10 @@ mod tests {
         let is_fchdir: fn(&Action) -> bool = |s| matches!(s, Action::Fchdir(_));
         let is_fchmod: fn(&Action) -> bool = |s| matches!(s, Action::Fchmod(_));
         let is_fchmodat: fn(&Action) -> bool = |s| matches!(s, Action::Fchmodat(_));
+        let is_fchown: fn(&Action) -> bool = |s| matches!(s, Action::Fchown(_));
+        let is_fchownat: fn(&Action) -> bool = |s| matches!(s, Action::Fchownat(_));
         let is_chmod: fn(&Action) -> bool = |s| matches!(s, Action::Chmod(_));
+        let is_chown: fn(&Action) -> bool = |s| matches!(s, Action::Chown(_));
         let is_fdatasync: fn(&Action) -> bool = |s| matches!(s, Action::Fdatasync(_));
         let is_fork: fn(&Action) -> bool = |s| matches!(s, Action::Fork(_));
         let is_fstat: fn(&Action) -> bool = |s| matches!(s, Action::Fstat(_));
@@ -354,6 +373,7 @@ mod tests {
         let is_getcwd: fn(&Action) -> bool = |s| matches!(s, Action::Getcwd(_));
         let is_getdents: fn(&Action) -> bool = |s| matches!(s, Action::Getdents(_));
         let is_getdents64: fn(&Action) -> bool = |s| matches!(s, Action::Getdents64(_));
+        let is_lchown: fn(&Action) -> bool = |s| matches!(s, Action::Lchown(_));
         let is_link: fn(&Action) -> bool = |s| matches!(s, Action::Link(_));
         let is_linkat: fn(&Action) -> bool = |s| matches!(s, Action::Linkat(_));
         let is_lstat: fn(&Action) -> bool = |s| matches!(s, Action::Lstat(_));
@@ -427,7 +447,13 @@ mod tests {
             ("fchdir(0) = 0", is_fchdir),
             ("fchmod(3, 0600) = 0", is_fchmod),
             ("fchmodat(AT_FDCWD, \"/tmp/f\", 0755) = 0", is_fchmodat),
+            ("fchown(3, 1000, 1000) = 0", is_fchown),
+            (
+                "fchownat(AT_FDCWD, \"/tmp/f\", 1000, 1000, 0) = 0",
+                is_fchownat,
+            ),
             ("chmod(\"/tmp/f\", 0644) = 0", is_chmod),
+            ("chown(\"/tmp/f\", 1000, 1000) = 0", is_chown),
             ("fdatasync(3) = 0", is_fdatasync),
             ("fork() = 123", is_fork),
             ("fstat(1, 0x1) = -1 EBADF", is_fstat),
@@ -436,6 +462,7 @@ mod tests {
             ("getcwd(\"/tmp\", 4096) = 4", is_getcwd),
             ("getdents(3, [], 4096) = 0", is_getdents),
             ("getdents64(3, [], 4096) = 0", is_getdents64),
+            ("lchown(\"/tmp/f\", 1000, 1000) = 0", is_lchown),
             ("link(\"/a\", \"/b\") = 0", is_link),
             ("linkat(AT_FDCWD, \"a\", AT_FDCWD, \"b\", 0) = 0", is_linkat),
             ("lstat(\"/f\", 0x1) = -1 ENOENT", is_lstat),
@@ -553,8 +580,17 @@ mod tests {
             "fchmod(3, 0600) = -1 EBADF",
             "fchmodat(AT_FDCWD, \"/tmp/f\", 0755) = 0",
             "fchmodat(AT_FDCWD, \"/tmp/f\", 0755) = -1 ENOENT",
+            "fchown(3, 1000, 1000) = 0",
+            "fchown(3</tmp/f>, -1, 1000) = -1 EBADF",
+            "fchownat(AT_FDCWD, \"/tmp/f\", 1000, 1000, 0) = 0",
+            "fchownat(3, \"f\", -1, -1, AT_SYMLINK_NOFOLLOW|AT_EMPTY_PATH) = -1 ENOENT",
+            "fchownat(AT_FDCWD, \"/tmp/f\", 0, 0, AT_EMPTY_PATH|0x1) = -1 EINVAL",
             "chmod(\"/tmp/f\", 0644) = 0",
             "chmod(\"/tmp/f\", 0644) = -1 EACCES",
+            "chown(\"/tmp/f\", 1000, 1000) = 0",
+            "chown(\"/tmp/f\", -1, -1) = -1 EPERM",
+            "chown(\"/a, b\", 0, 1000) = -1 ENOENT",
+            "chown(\"/tmp/f\", 4294967294, 4294967294) = 0",
             "fdatasync(3) = 0",
             "fdatasync(3) = -1 EBADF",
             "ftruncate(3, 1024) = 0",
@@ -593,6 +629,8 @@ mod tests {
             "truncate(\"/tmp/file\", 1024) = 0",
             "truncate(\"/tmp/file\", 0) = -1 EINVAL",
             "linkat(AT_FDCWD, \"a\", AT_FDCWD, \"b\", AT_SYMLINK_FOLLOW) = -1 EPERM",
+            "lchown(\"/tmp/f\", 1000, 1000) = 0",
+            "lchown(\"/tmp/f\", -1, 1000) = -1 ENOENT",
             "clone3({flags=CLONE_VM, exit_signal=SIGCHLD}, 88) = -1 EPERM",
             "splice(5, [5], 4, NULL, 64, SPLICE_F_MOVE) = 64",
             "splice(5, NULL, 4, NULL, 0, 0x10 /* SPLICE_F_??? */) = 0",

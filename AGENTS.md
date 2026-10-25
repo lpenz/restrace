@@ -136,6 +136,8 @@ same way the existing records do:
   changed it.
 - `LenResult` (`lenresult.rs`): a byte-count-or-errno return value.
 - `OkResult` (`result.rs`): a generic success-or-errno return value.
+- `Uid` (`uid.rs`): a user or group ID argument as `strace` prints it, where
+  `-1` leaves the owner or group unchanged.
 - `FdResult` (`fd.rs`), `Errno` (`errno.rs`), `Mode`/`FileMode`/`AccessMode`,
   `Device`, `DirFd` and the various flag types.
 - Helpers in `parse.rs`: `split_args` and `split_args_nested` (ignores

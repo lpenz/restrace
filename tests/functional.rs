@@ -312,6 +312,136 @@ async fn parses_fchmod() {
     assert!(fchmod.result.is_ok(), "expected a successful fchmod(2)");
 }
 
+/// Runs a Python one-liner whose `os.chown` call makes the traced process
+/// issue a `chown(2)`, and checks that the call parses as `Action::Chown`.
+#[::tokio::test]
+async fn parses_chown() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-chown-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; fd = os.open({path:?}, os.O_CREAT | os.O_RDWR, 0o644); os.close(fd); \
+         os.chown({path:?}, os.getuid(), os.getgid()); os.unlink({path:?})",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+
+    let chown = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Chown(chown) => Some(chown),
+            _ => None,
+        })
+        .expect("expected a parsed chown(2)");
+    assert!(chown.result.is_ok(), "expected a successful chown(2)");
+}
+
+/// Runs a Python one-liner whose `os.fchown` call makes the traced process
+/// issue a `fchown(2)`, and checks that the call parses as `Action::Fchown`.
+#[::tokio::test]
+async fn parses_fchown() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-fchown-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; fd = os.open({path:?}, os.O_CREAT | os.O_RDWR, 0o644); \
+         os.fchown(fd, os.getuid(), os.getgid()); os.close(fd); os.unlink({path:?})",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+
+    let fchown = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Fchown(fchown) => Some(fchown),
+            _ => None,
+        })
+        .expect("expected a parsed fchown(2)");
+    assert!(fchown.result.is_ok(), "expected a successful fchown(2)");
+}
+
+/// Runs a Python one-liner whose `os.lchown` call makes the traced process
+/// issue a `lchown(2)`, and checks that the call parses as `Action::Lchown`.
+#[::tokio::test]
+async fn parses_lchown() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let target = std::env::temp_dir().join(format!("restrace-lchown-{}.txt", std::process::id()));
+    let link = std::env::temp_dir().join(format!("restrace-lchown-{}.lnk", std::process::id()));
+    let script = format!(
+        "import os; open({target:?}, 'w').close(); os.symlink({target:?}, {link:?}); \
+         os.lchown({link:?}, os.getuid(), os.getgid()); \
+         os.unlink({link:?}); os.unlink({target:?})",
+        target = target.display().to_string(),
+        link = link.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+
+    let lchown = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Lchown(lchown) => Some(lchown),
+            _ => None,
+        })
+        .expect("expected a parsed lchown(2)");
+    assert!(lchown.result.is_ok(), "expected a successful lchown(2)");
+    assert_eq!(
+        lchown.pathname.to_string_lossy(),
+        link.to_string_lossy(),
+        "expected the lchown(2) of the symbolic link"
+    );
+}
+
+/// Runs a Python one-liner whose `os.chown` with a directory descriptor makes
+/// the traced process issue a `fchownat(2)`, and checks that the call parses
+/// as `Action::Fchownat`.
+#[::tokio::test]
+async fn parses_fchownat() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!("restrace-fchownat-{}.txt", std::process::id()));
+    let name = path
+        .file_name()
+        .expect("test path has a file name")
+        .to_string_lossy()
+        .into_owned();
+    let script = format!(
+        "import os; d = {dir:?}; p = {path:?}; \
+         fd = os.open(p, os.O_CREAT | os.O_RDWR, 0o644); os.close(fd); \
+         dfd = os.open(d, os.O_RDONLY); \
+         os.chown({name:?}, os.getuid(), os.getgid(), dir_fd=dfd); \
+         os.close(dfd); os.unlink(p)",
+        dir = dir.display().to_string(),
+        path = path.display().to_string(),
+        name = name
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+
+    let fchownat = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Fchownat(fchownat) => Some(fchownat),
+            _ => None,
+        })
+        .expect("expected a parsed fchownat(2)");
+    assert!(fchownat.result.is_ok(), "expected a successful fchownat(2)");
+    assert!(!fchownat.dirfd.is_cwd(), "expected a directory descriptor");
+    assert_eq!(fchownat.flags, restrace::syscalls::FchownatFlags(0));
+}
+
 /// Runs a Python one-liner whose `os.chmod` via relative path or just ensures
 /// `fchmodat(2)` can be parsed if seen; we also test via shell chmod which may
 /// use fchmodat.
