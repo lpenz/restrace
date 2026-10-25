@@ -9,10 +9,10 @@ use crate::syscalls::{
     Access, Chdir, Chmod, Chown, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3,
     Execve, Execveat, Faccessat, Faccessat2, Fchdir, Fchmod, Fchmodat, Fchown, Fchownat, Fdatasync,
     Fork, Fstat, Fsync, Ftruncate, Generic, Getcwd, Getdents, Getdents64, Lchown, Link, Linkat,
-    Lstat, Mkdir, Mkdirat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64,
-    Preadv, Preadv2, Pwrite64, Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Rename,
-    Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx, Symlink, Symlinkat, Truncate,
-    Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
+    Lstat, Mkdir, Mkdirat, Mknod, Mknodat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError,
+    Pipe2, Pread64, Preadv, Preadv2, Pwrite64, Pwritev, Pwritev2, Read, Readlink, Readlinkat,
+    Readv, Rename, Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx, Symlink, Symlinkat,
+    Truncate, Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -94,6 +94,10 @@ pub enum Action {
     Mkdir(Mkdir),
     /// A `mkdirat(2)` call.
     Mkdirat(Mkdirat),
+    /// A `mknod(2)` call.
+    Mknod(Mknod),
+    /// A `mknodat(2)` call.
+    Mknodat(Mknodat),
     /// An `mmap(2)` call.
     Mmap(Mmap),
     /// A `newfstatat(2)` call.
@@ -203,6 +207,8 @@ impl fmt::Display for Action {
             Self::Lstat(syscall) => syscall.fmt(f),
             Self::Mkdir(syscall) => syscall.fmt(f),
             Self::Mkdirat(syscall) => syscall.fmt(f),
+            Self::Mknod(syscall) => syscall.fmt(f),
+            Self::Mknodat(syscall) => syscall.fmt(f),
             Self::Mmap(syscall) => syscall.fmt(f),
             Self::Newfstatat(syscall) => syscall.fmt(f),
             Self::Open(syscall) => syscall.fmt(f),
@@ -291,6 +297,8 @@ impl FromStr for Action {
                     "lstat" => Lstat::from_str(s).map(Self::Lstat),
                     "mkdir" => Mkdir::from_str(s).map(Self::Mkdir),
                     "mkdirat" => Mkdirat::from_str(s).map(Self::Mkdirat),
+                    "mknod" => Mknod::from_str(s).map(Self::Mknod),
+                    "mknodat" => Mknodat::from_str(s).map(Self::Mknodat),
                     "mmap" => Mmap::from_str(s).map(Self::Mmap),
                     "newfstatat" => Newfstatat::from_str(s).map(Self::Newfstatat),
                     "open" => Open::from_str(s).map(Self::Open),
@@ -379,6 +387,8 @@ mod tests {
         let is_lstat: fn(&Action) -> bool = |s| matches!(s, Action::Lstat(_));
         let is_mkdir: fn(&Action) -> bool = |s| matches!(s, Action::Mkdir(_));
         let is_mkdirat: fn(&Action) -> bool = |s| matches!(s, Action::Mkdirat(_));
+        let is_mknod: fn(&Action) -> bool = |s| matches!(s, Action::Mknod(_));
+        let is_mknodat: fn(&Action) -> bool = |s| matches!(s, Action::Mknodat(_));
         let is_mmap: fn(&Action) -> bool = |s| matches!(s, Action::Mmap(_));
         let is_newfstatat: fn(&Action) -> bool = |s| matches!(s, Action::Newfstatat(_));
         let is_open: fn(&Action) -> bool = |s| matches!(s, Action::Open(_));
@@ -468,6 +478,11 @@ mod tests {
             ("lstat(\"/f\", 0x1) = -1 ENOENT", is_lstat),
             ("mkdir(\"/tmp/dir\", 0755) = 0", is_mkdir),
             ("mkdirat(AT_FDCWD, \"/tmp/dir\", 0755) = 0", is_mkdirat),
+            ("mknod(\"/tmp/fifo\", S_IFIFO|0644) = 0", is_mknod),
+            (
+                "mknodat(AT_FDCWD, \"/tmp/fifo\", S_IFIFO|0644) = 0",
+                is_mknodat,
+            ),
             (
                 "mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, \
                  -1, 0) = 0x7f1234567000",
@@ -634,6 +649,10 @@ mod tests {
             "clone3({flags=CLONE_VM, exit_signal=SIGCHLD}, 88) = -1 EPERM",
             "splice(5, [5], 4, NULL, 64, SPLICE_F_MOVE) = 64",
             "splice(5, NULL, 4, NULL, 0, 0x10 /* SPLICE_F_??? */) = 0",
+            "mknod(\"/tmp/fifo\", S_IFIFO|0644) = 0",
+            "mknod(\"/tmp/dev\", S_IFCHR|0666, makedev(0x1, 0x3)) = -1 EPERM",
+            "mknodat(AT_FDCWD, \"/tmp/fifo\", S_IFIFO|0644) = 0",
+            "mknodat(4, \"dev\", S_IFBLK|0600, makedev(0x8, 0)) = -1 EACCES",
             "sendfile(4, 3, [0 => 10], 100) = 10",
             "sendfile(1, 3, NULL, 100) = 100",
             "stat(\"/etc/hostname\", 0x7ffd684fe7b0) = 0",

@@ -45,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A new `Uid` argument type for the owner and group IDs of the `chown(2)`
   family, which prints and parses the `-1` value that leaves the owner or
   group unchanged.
+- A typed `mknod(2)` record, carried as the `Action::Mknod` variant, with the
+  `FileMode` mode type and the `Device` device type.
+- A typed `mknodat(2)` record, carried as the `Action::Mknodat` variant, with
+  the `FileMode` mode type and the `Device` device type.
 - A typed `truncate(2)` record, carried as the `Action::Truncate` variant.
 - A typed `getdents(2)` record, carried as the `Action::Getdents` variant, with
   the `DirentList`, `Dirent` and `DirentType` entry types and the `LenResult`

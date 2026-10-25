@@ -463,6 +463,74 @@ async fn parses_fchmodat() {
     }
 }
 
+/// Runs a Python one-liner that issues the legacy `mknod(2)` system call
+/// directly, and checks that the call parses as `Action::Mknod`.
+///
+/// glibc implements `mknod(2)` in terms of `mknodat(2)`, so a normal library
+/// call does not produce the legacy syscall. The test uses the raw syscall
+/// number from libc and therefore only runs on x86_64, one of the
+/// architectures that still has a separate `mknod(2)` entry.
+#[cfg(target_arch = "x86_64")]
+#[::tokio::test]
+async fn parses_mknod() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-mknod-{}.fifo", std::process::id()));
+    let script = format!(
+        "import ctypes, os; libc = ctypes.CDLL(None, use_errno=True); \
+         r = libc.syscall({nr}, {path:?}.encode(), 0o010644, 0); \
+         assert r == 0, ctypes.get_errno(); os.unlink({path:?})",
+        nr = libc::SYS_mknod,
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+    let _ = std::fs::remove_file(&path);
+
+    let mknod = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Mknod(mknod) => Some(mknod),
+            _ => None,
+        })
+        .expect("expected a parsed mknod(2)");
+    assert!(mknod.result.is_ok(), "expected a successful mknod(2)");
+    assert_eq!(mknod.mode, restrace::syscalls::FileMode(0o010644));
+    assert_eq!(mknod.device, None);
+}
+
+/// Runs a Python one-liner whose `os.mknod` call makes the traced process
+/// issue a `mknodat(2)`, and checks that the call parses as
+/// `Action::Mknodat`.
+#[::tokio::test]
+async fn parses_mknodat() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-mknodat-{}.fifo", std::process::id()));
+    let script = format!(
+        "import os; os.mknod({path:?}, 0o010644); os.unlink({path:?})",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+    let _ = std::fs::remove_file(&path);
+
+    let mknodat = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Mknodat(mknodat) => Some(mknodat),
+            _ => None,
+        })
+        .expect("expected a parsed mknodat(2)");
+    assert!(mknodat.result.is_ok(), "expected a successful mknodat(2)");
+    assert_eq!(mknodat.mode, restrace::syscalls::FileMode(0o010644));
+    assert_eq!(mknodat.device, None);
+}
+
 /// Runs a shell command line whose builtin `printf` writes to its standard
 /// output, and checks that the call parses as `Action::Write` with the bytes
 /// decoded from its buffer.
