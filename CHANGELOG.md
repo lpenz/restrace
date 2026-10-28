@@ -105,6 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ProtFlags`, `MmapFlags` and `MapResult` argument types.
 - A typed `splice(2)` record, carried as the `Action::Splice` variant, with the
   `SpliceFlags` argument type and the `Indirect` buffer-value type.
+- A typed `tee(2)` record, carried as the `Action::Tee` variant.
 - A typed `sendfile(2)` record, carried as the `Action::Sendfile` variant, with
   the `Indirect` offset value type.
 - A typed `copy_file_range(2)` record, carried as the `Action::CopyFileRange`

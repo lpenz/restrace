@@ -12,7 +12,7 @@ use crate::syscalls::{
     Getdents64, Lchown, Link, Linkat, Lremovexattr, Lsetxattr, Lstat, Mkdir, Mkdirat, Mknod,
     Mknodat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2,
     Pwrite64, Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Removexattr, Rename, Renameat,
-    Renameat2, Rmdir, Sendfile, Setxattr, Splice, Stat, Statx, Symlink, Symlinkat, Truncate,
+    Renameat2, Rmdir, Sendfile, Setxattr, Splice, Stat, Statx, Symlink, Symlinkat, Tee, Truncate,
     Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
 };
 use std::fmt;
@@ -165,6 +165,8 @@ pub enum Action {
     Symlink(Symlink),
     /// A `symlinkat(2)` call.
     Symlinkat(Symlinkat),
+    /// A `tee(2)` call.
+    Tee(Tee),
     /// A `truncate(2)` call.
     Truncate(Truncate),
     /// An `unlink(2)` call.
@@ -257,6 +259,7 @@ impl fmt::Display for Action {
             Self::Statx(syscall) => syscall.fmt(f),
             Self::Symlink(syscall) => syscall.fmt(f),
             Self::Symlinkat(syscall) => syscall.fmt(f),
+            Self::Tee(syscall) => syscall.fmt(f),
             Self::Truncate(syscall) => syscall.fmt(f),
             Self::Unlink(syscall) => syscall.fmt(f),
             Self::Unlinkat(syscall) => syscall.fmt(f),
@@ -354,6 +357,7 @@ impl FromStr for Action {
                     "statx" => Statx::from_str(s).map(|x| Self::Statx(Box::new(x))),
                     "symlink" => Symlink::from_str(s).map(Self::Symlink),
                     "symlinkat" => Symlinkat::from_str(s).map(Self::Symlinkat),
+                    "tee" => Tee::from_str(s).map(Self::Tee),
                     "truncate" => Truncate::from_str(s).map(Self::Truncate),
                     "unlink" => Unlink::from_str(s).map(Self::Unlink),
                     "unlinkat" => Unlinkat::from_str(s).map(Self::Unlinkat),
@@ -451,6 +455,7 @@ mod tests {
         let is_statx: fn(&Action) -> bool = |s| matches!(s, Action::Statx(_));
         let is_symlink: fn(&Action) -> bool = |s| matches!(s, Action::Symlink(_));
         let is_symlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Symlinkat(_));
+        let is_tee: fn(&Action) -> bool = |s| matches!(s, Action::Tee(_));
         let is_truncate: fn(&Action) -> bool = |s| matches!(s, Action::Truncate(_));
         let is_unlink: fn(&Action) -> bool = |s| matches!(s, Action::Unlink(_));
         let is_unlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Unlinkat(_));
@@ -602,6 +607,7 @@ mod tests {
             ),
             ("symlink(\"t\", \"l\") = 0", is_symlink),
             ("symlinkat(\"t\", AT_FDCWD, \"l\") = 0", is_symlinkat),
+            ("tee(3, 4, 64, 0) = 64", is_tee),
             ("truncate(\"/tmp/file\", 1024) = 0", is_truncate),
             ("unlink(\"/f\") = 0", is_unlink),
             ("unlinkat(AT_FDCWD, \"/f\", 0) = 0", is_unlinkat),
@@ -704,6 +710,8 @@ mod tests {
             "clone3({flags=CLONE_VM, exit_signal=SIGCHLD}, 88) = -1 EPERM",
             "splice(5, [5], 4, NULL, 64, SPLICE_F_MOVE) = 64",
             "splice(5, NULL, 4, NULL, 0, 0x10 /* SPLICE_F_??? */) = 0",
+            "tee(3, 4, 64, SPLICE_F_NONBLOCK) = -1 EAGAIN",
+            "tee(3, 4, 4096, SPLICE_F_MOVE|SPLICE_F_MORE) = 4096",
             "mknod(\"/tmp/fifo\", S_IFIFO|0644) = 0",
             "mknod(\"/tmp/dev\", S_IFCHR|0666, makedev(0x1, 0x3)) = -1 EPERM",
             "mknodat(AT_FDCWD, \"/tmp/fifo\", S_IFIFO|0644) = 0",
