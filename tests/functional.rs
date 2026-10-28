@@ -34,6 +34,20 @@ fn python3_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Returns whether the temporary directory supports user extended attributes.
+fn xattr_available() -> bool {
+    let path = std::env::temp_dir().join(format!("restrace-xattr-check-{}", std::process::id()));
+    let script = format!(
+        "import os; p = {path:?}; open(p, 'w').close(); \
+         os.setxattr(p, 'user.restrace', b'x'); \
+         os.removexattr(p, 'user.restrace'); os.unlink(p)",
+        path = path.display().to_string()
+    );
+    let out = Command::new("python3").args(["-c", &script]).output();
+    let _ = std::fs::remove_file(&path);
+    out.map(|out| out.status.success()).unwrap_or(false)
+}
+
 /// Returns whether `strace` can trace forks in this environment.
 fn strace_can_trace_forks() -> bool {
     let out = Command::new("strace")
@@ -529,6 +543,234 @@ async fn parses_mknodat() {
     assert!(mknodat.result.is_ok(), "expected a successful mknodat(2)");
     assert_eq!(mknodat.mode, restrace::syscalls::FileMode(0o010644));
     assert_eq!(mknodat.device, None);
+}
+
+/// Runs a Python one-liner whose `os.setxattr` call makes the traced process
+/// issue a `setxattr(2)`, and checks that the call parses as
+/// `Action::Setxattr`.
+#[::tokio::test]
+async fn parses_setxattr() {
+    if !strace_available() || !python3_available() || !xattr_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-setxattr-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; p = {path:?}; open(p, 'w').close(); \
+         os.setxattr(p, 'user.restrace', b'hello'); \
+         os.removexattr(p, 'user.restrace'); os.unlink(p)",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+    let _ = std::fs::remove_file(&path);
+
+    let setxattr = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Setxattr(setxattr) => Some(setxattr),
+            _ => None,
+        })
+        .expect("expected a parsed setxattr(2)");
+    assert!(setxattr.result.is_ok(), "expected a successful setxattr(2)");
+    assert_eq!(setxattr.name.to_str().unwrap(), "user.restrace");
+    assert_eq!(
+        setxattr.value.decoded().map(|value| value.bytes.as_slice()),
+        Some(b"hello".as_slice())
+    );
+    assert_eq!(setxattr.size, 5);
+}
+
+/// Runs a Python one-liner whose `os.setxattr` with a file descriptor makes
+/// the traced process issue a `fsetxattr(2)`, and checks that the call parses
+/// as `Action::Fsetxattr`.
+#[::tokio::test]
+async fn parses_fsetxattr() {
+    if !strace_available() || !python3_available() || !xattr_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-fsetxattr-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; p = {path:?}; open(p, 'w').close(); \
+         fd = os.open(p, os.O_RDONLY); \
+         os.setxattr(fd, 'user.restrace', b'hello'); \
+         os.removexattr(fd, 'user.restrace'); os.close(fd); os.unlink(p)",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+    let _ = std::fs::remove_file(&path);
+
+    let fsetxattr = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Fsetxattr(fsetxattr) => Some(fsetxattr),
+            _ => None,
+        })
+        .expect("expected a parsed fsetxattr(2)");
+    assert!(
+        fsetxattr.result.is_ok(),
+        "expected a successful fsetxattr(2)"
+    );
+    assert_eq!(fsetxattr.name.to_str().unwrap(), "user.restrace");
+    assert_eq!(
+        fsetxattr
+            .value
+            .decoded()
+            .map(|value| value.bytes.as_slice()),
+        Some(b"hello".as_slice())
+    );
+    assert_eq!(fsetxattr.size, 5);
+}
+
+/// Runs a Python one-liner whose `os.setxattr` with `follow_symlinks=False`
+/// makes the traced process issue a `lsetxattr(2)`, and checks that the call
+/// parses as `Action::Lsetxattr`.
+#[::tokio::test]
+async fn parses_lsetxattr() {
+    if !strace_available() || !python3_available() || !xattr_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-lsetxattr-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; p = {path:?}; open(p, 'w').close(); \
+         os.setxattr(p, 'user.restrace', b'hello', follow_symlinks=False); \
+         os.removexattr(p, 'user.restrace', follow_symlinks=False); os.unlink(p)",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+    let _ = std::fs::remove_file(&path);
+
+    let lsetxattr = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Lsetxattr(lsetxattr) => Some(lsetxattr),
+            _ => None,
+        })
+        .expect("expected a parsed lsetxattr(2)");
+    assert!(
+        lsetxattr.result.is_ok(),
+        "expected a successful lsetxattr(2)"
+    );
+    assert_eq!(lsetxattr.name.to_str().unwrap(), "user.restrace");
+    assert_eq!(
+        lsetxattr
+            .value
+            .decoded()
+            .map(|value| value.bytes.as_slice()),
+        Some(b"hello".as_slice())
+    );
+    assert_eq!(lsetxattr.size, 5);
+}
+
+/// Runs a Python one-liner whose `os.removexattr` call makes the traced
+/// process issue a `removexattr(2)`, and checks that the call parses as
+/// `Action::Removexattr`.
+#[::tokio::test]
+async fn parses_removexattr() {
+    if !strace_available() || !python3_available() || !xattr_available() {
+        return;
+    }
+    let path =
+        std::env::temp_dir().join(format!("restrace-removexattr-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; p = {path:?}; open(p, 'w').close(); \
+         os.setxattr(p, 'user.restrace', b'hello'); \
+         os.removexattr(p, 'user.restrace'); os.unlink(p)",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+    let _ = std::fs::remove_file(&path);
+
+    let removexattr = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Removexattr(removexattr) => Some(removexattr),
+            _ => None,
+        })
+        .expect("expected a parsed removexattr(2)");
+    assert!(
+        removexattr.result.is_ok(),
+        "expected a successful removexattr(2)"
+    );
+    assert_eq!(removexattr.name.to_str().unwrap(), "user.restrace");
+}
+
+/// Runs a Python one-liner whose `os.removexattr` with a file descriptor makes
+/// the traced process issue a `fremovexattr(2)`, and checks that the call
+/// parses as `Action::Fremovexattr`.
+#[::tokio::test]
+async fn parses_fremovexattr() {
+    if !strace_available() || !python3_available() || !xattr_available() {
+        return;
+    }
+    let path =
+        std::env::temp_dir().join(format!("restrace-fremovexattr-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; p = {path:?}; open(p, 'w').close(); \
+         fd = os.open(p, os.O_RDONLY); \
+         os.setxattr(fd, 'user.restrace', b'hello'); \
+         os.removexattr(fd, 'user.restrace'); os.close(fd); os.unlink(p)",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+    let _ = std::fs::remove_file(&path);
+
+    let fremovexattr = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Fremovexattr(fremovexattr) => Some(fremovexattr),
+            _ => None,
+        })
+        .expect("expected a parsed fremovexattr(2)");
+    assert!(
+        fremovexattr.result.is_ok(),
+        "expected a successful fremovexattr(2)"
+    );
+    assert_eq!(fremovexattr.name.to_str().unwrap(), "user.restrace");
+}
+
+/// Runs a Python one-liner whose `os.removexattr` with
+/// `follow_symlinks=False` makes the traced process issue a
+/// `lremovexattr(2)`, and checks that the call parses as
+/// `Action::Lremovexattr`.
+#[::tokio::test]
+async fn parses_lremovexattr() {
+    if !strace_available() || !python3_available() || !xattr_available() {
+        return;
+    }
+    let path =
+        std::env::temp_dir().join(format!("restrace-lremovexattr-{}.txt", std::process::id()));
+    let script = format!(
+        "import os; p = {path:?}; open(p, 'w').close(); \
+         os.setxattr(p, 'user.restrace', b'hello', follow_symlinks=False); \
+         os.removexattr(p, 'user.restrace', follow_symlinks=False); os.unlink(p)",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+    let _ = std::fs::remove_file(&path);
+
+    let lremovexattr = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Lremovexattr(lremovexattr) => Some(lremovexattr),
+            _ => None,
+        })
+        .expect("expected a parsed lremovexattr(2)");
+    assert!(
+        lremovexattr.result.is_ok(),
+        "expected a successful lremovexattr(2)"
+    );
+    assert_eq!(lremovexattr.name.to_str().unwrap(), "user.restrace");
 }
 
 /// Runs a shell command line whose builtin `printf` writes to its standard

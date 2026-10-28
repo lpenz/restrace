@@ -8,11 +8,12 @@ use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Chmod, Chown, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3,
     Execve, Execveat, Faccessat, Faccessat2, Fchdir, Fchmod, Fchmodat, Fchown, Fchownat, Fdatasync,
-    Fork, Fstat, Fsync, Ftruncate, Generic, Getcwd, Getdents, Getdents64, Lchown, Link, Linkat,
-    Lstat, Mkdir, Mkdirat, Mknod, Mknodat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError,
-    Pipe2, Pread64, Preadv, Preadv2, Pwrite64, Pwritev, Pwritev2, Read, Readlink, Readlinkat,
-    Readv, Rename, Renameat, Renameat2, Rmdir, Sendfile, Splice, Stat, Statx, Symlink, Symlinkat,
-    Truncate, Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
+    Fork, Fremovexattr, Fsetxattr, Fstat, Fsync, Ftruncate, Generic, Getcwd, Getdents, Getdents64,
+    Lchown, Link, Linkat, Lremovexattr, Lsetxattr, Lstat, Mkdir, Mkdirat, Mknod, Mknodat, Mmap,
+    Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Pwrite64,
+    Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Removexattr, Rename, Renameat, Renameat2,
+    Rmdir, Sendfile, Setxattr, Splice, Stat, Statx, Symlink, Symlinkat, Truncate, Unlink, Unlinkat,
+    Utimensat, Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -70,6 +71,10 @@ pub enum Action {
     Fdatasync(Fdatasync),
     /// A `fork(2)` call.
     Fork(Fork),
+    /// An `fremovexattr(2)` call.
+    Fremovexattr(Fremovexattr),
+    /// An `fsetxattr(2)` call.
+    Fsetxattr(Fsetxattr),
     /// An `fstat(2)` call.
     Fstat(Fstat),
     /// An `fsync(2)` call.
@@ -88,6 +93,10 @@ pub enum Action {
     Link(Link),
     /// A `linkat(2)` call.
     Linkat(Linkat),
+    /// An `lremovexattr(2)` call.
+    Lremovexattr(Lremovexattr),
+    /// An `lsetxattr(2)` call.
+    Lsetxattr(Lsetxattr),
     /// An `lstat(2)` call.
     Lstat(Lstat),
     /// A `mkdir(2)` call.
@@ -130,6 +139,8 @@ pub enum Action {
     Readlinkat(Readlinkat),
     /// A `readv(2)` call.
     Readv(Readv),
+    /// A `removexattr(2)` call.
+    Removexattr(Removexattr),
     /// A `rename(2)` call.
     Rename(Rename),
     /// A `renameat(2)` call.
@@ -140,6 +151,8 @@ pub enum Action {
     Rmdir(Rmdir),
     /// A `sendfile(2)` call.
     Sendfile(Sendfile),
+    /// A `setxattr(2)` call.
+    Setxattr(Setxattr),
     /// A `splice(2)` call.
     Splice(Splice),
     /// A `stat(2)` call.
@@ -195,6 +208,8 @@ impl fmt::Display for Action {
             Self::Fchownat(syscall) => syscall.fmt(f),
             Self::Fdatasync(syscall) => syscall.fmt(f),
             Self::Fork(syscall) => syscall.fmt(f),
+            Self::Fremovexattr(syscall) => syscall.fmt(f),
+            Self::Fsetxattr(syscall) => syscall.fmt(f),
             Self::Fstat(syscall) => syscall.fmt(f),
             Self::Fsync(syscall) => syscall.fmt(f),
             Self::Ftruncate(syscall) => syscall.fmt(f),
@@ -204,6 +219,8 @@ impl fmt::Display for Action {
             Self::Lchown(syscall) => syscall.fmt(f),
             Self::Link(syscall) => syscall.fmt(f),
             Self::Linkat(syscall) => syscall.fmt(f),
+            Self::Lremovexattr(syscall) => syscall.fmt(f),
+            Self::Lsetxattr(syscall) => syscall.fmt(f),
             Self::Lstat(syscall) => syscall.fmt(f),
             Self::Mkdir(syscall) => syscall.fmt(f),
             Self::Mkdirat(syscall) => syscall.fmt(f),
@@ -225,11 +242,13 @@ impl fmt::Display for Action {
             Self::Readlink(syscall) => syscall.fmt(f),
             Self::Readlinkat(syscall) => syscall.fmt(f),
             Self::Readv(syscall) => syscall.fmt(f),
+            Self::Removexattr(syscall) => syscall.fmt(f),
             Self::Rename(syscall) => syscall.fmt(f),
             Self::Renameat(syscall) => syscall.fmt(f),
             Self::Renameat2(syscall) => syscall.fmt(f),
             Self::Rmdir(syscall) => syscall.fmt(f),
             Self::Sendfile(syscall) => syscall.fmt(f),
+            Self::Setxattr(syscall) => syscall.fmt(f),
             Self::Splice(syscall) => syscall.fmt(f),
             Self::Stat(syscall) => syscall.fmt(f),
             Self::Statx(syscall) => syscall.fmt(f),
@@ -285,6 +304,8 @@ impl FromStr for Action {
                     "fchownat" => Fchownat::from_str(s).map(Self::Fchownat),
                     "fdatasync" => Fdatasync::from_str(s).map(Self::Fdatasync),
                     "fork" => Fork::from_str(s).map(Self::Fork),
+                    "fremovexattr" => Fremovexattr::from_str(s).map(Self::Fremovexattr),
+                    "fsetxattr" => Fsetxattr::from_str(s).map(Self::Fsetxattr),
                     "fstat" => Fstat::from_str(s).map(Self::Fstat),
                     "fsync" => Fsync::from_str(s).map(Self::Fsync),
                     "ftruncate" => Ftruncate::from_str(s).map(Self::Ftruncate),
@@ -294,6 +315,8 @@ impl FromStr for Action {
                     "lchown" => Lchown::from_str(s).map(Self::Lchown),
                     "link" => Link::from_str(s).map(Self::Link),
                     "linkat" => Linkat::from_str(s).map(Self::Linkat),
+                    "lremovexattr" => Lremovexattr::from_str(s).map(Self::Lremovexattr),
+                    "lsetxattr" => Lsetxattr::from_str(s).map(Self::Lsetxattr),
                     "lstat" => Lstat::from_str(s).map(Self::Lstat),
                     "mkdir" => Mkdir::from_str(s).map(Self::Mkdir),
                     "mkdirat" => Mkdirat::from_str(s).map(Self::Mkdirat),
@@ -315,11 +338,13 @@ impl FromStr for Action {
                     "readlink" => Readlink::from_str(s).map(Self::Readlink),
                     "readlinkat" => Readlinkat::from_str(s).map(Self::Readlinkat),
                     "readv" => Readv::from_str(s).map(Self::Readv),
+                    "removexattr" => Removexattr::from_str(s).map(Self::Removexattr),
                     "rename" => Rename::from_str(s).map(Self::Rename),
                     "renameat" => Renameat::from_str(s).map(Self::Renameat),
                     "renameat2" => Renameat2::from_str(s).map(Self::Renameat2),
                     "rmdir" => Rmdir::from_str(s).map(Self::Rmdir),
                     "sendfile" => Sendfile::from_str(s).map(Self::Sendfile),
+                    "setxattr" => Setxattr::from_str(s).map(Self::Setxattr),
                     "splice" => Splice::from_str(s).map(Self::Splice),
                     "stat" => Stat::from_str(s).map(Self::Stat),
                     "statx" => Statx::from_str(s).map(|x| Self::Statx(Box::new(x))),
@@ -375,6 +400,8 @@ mod tests {
         let is_chown: fn(&Action) -> bool = |s| matches!(s, Action::Chown(_));
         let is_fdatasync: fn(&Action) -> bool = |s| matches!(s, Action::Fdatasync(_));
         let is_fork: fn(&Action) -> bool = |s| matches!(s, Action::Fork(_));
+        let is_fremovexattr: fn(&Action) -> bool = |s| matches!(s, Action::Fremovexattr(_));
+        let is_fsetxattr: fn(&Action) -> bool = |s| matches!(s, Action::Fsetxattr(_));
         let is_fstat: fn(&Action) -> bool = |s| matches!(s, Action::Fstat(_));
         let is_fsync: fn(&Action) -> bool = |s| matches!(s, Action::Fsync(_));
         let is_ftruncate: fn(&Action) -> bool = |s| matches!(s, Action::Ftruncate(_));
@@ -384,6 +411,8 @@ mod tests {
         let is_lchown: fn(&Action) -> bool = |s| matches!(s, Action::Lchown(_));
         let is_link: fn(&Action) -> bool = |s| matches!(s, Action::Link(_));
         let is_linkat: fn(&Action) -> bool = |s| matches!(s, Action::Linkat(_));
+        let is_lremovexattr: fn(&Action) -> bool = |s| matches!(s, Action::Lremovexattr(_));
+        let is_lsetxattr: fn(&Action) -> bool = |s| matches!(s, Action::Lsetxattr(_));
         let is_lstat: fn(&Action) -> bool = |s| matches!(s, Action::Lstat(_));
         let is_mkdir: fn(&Action) -> bool = |s| matches!(s, Action::Mkdir(_));
         let is_mkdirat: fn(&Action) -> bool = |s| matches!(s, Action::Mkdirat(_));
@@ -405,11 +434,13 @@ mod tests {
         let is_readlink: fn(&Action) -> bool = |s| matches!(s, Action::Readlink(_));
         let is_readlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Readlinkat(_));
         let is_readv: fn(&Action) -> bool = |s| matches!(s, Action::Readv(_));
+        let is_removexattr: fn(&Action) -> bool = |s| matches!(s, Action::Removexattr(_));
         let is_rename: fn(&Action) -> bool = |s| matches!(s, Action::Rename(_));
         let is_renameat: fn(&Action) -> bool = |s| matches!(s, Action::Renameat(_));
         let is_renameat2: fn(&Action) -> bool = |s| matches!(s, Action::Renameat2(_));
         let is_rmdir: fn(&Action) -> bool = |s| matches!(s, Action::Rmdir(_));
         let is_sendfile: fn(&Action) -> bool = |s| matches!(s, Action::Sendfile(_));
+        let is_setxattr: fn(&Action) -> bool = |s| matches!(s, Action::Setxattr(_));
         let is_splice: fn(&Action) -> bool = |s| matches!(s, Action::Splice(_));
         let is_stat: fn(&Action) -> bool = |s| matches!(s, Action::Stat(_));
         let is_statx: fn(&Action) -> bool = |s| matches!(s, Action::Statx(_));
@@ -466,6 +497,8 @@ mod tests {
             ("chown(\"/tmp/f\", 1000, 1000) = 0", is_chown),
             ("fdatasync(3) = 0", is_fdatasync),
             ("fork() = 123", is_fork),
+            ("fremovexattr(3, \"user.a\") = 0", is_fremovexattr),
+            ("fsetxattr(3, \"user.a\", \"v\", 1, 0) = 0", is_fsetxattr),
             ("fstat(1, 0x1) = -1 EBADF", is_fstat),
             ("fsync(3) = 0", is_fsync),
             ("ftruncate(3, 1024) = 0", is_ftruncate),
@@ -475,6 +508,11 @@ mod tests {
             ("lchown(\"/tmp/f\", 1000, 1000) = 0", is_lchown),
             ("link(\"/a\", \"/b\") = 0", is_link),
             ("linkat(AT_FDCWD, \"a\", AT_FDCWD, \"b\", 0) = 0", is_linkat),
+            ("lremovexattr(\"/tmp/f\", \"user.a\") = 0", is_lremovexattr),
+            (
+                "lsetxattr(\"/tmp/f\", \"user.a\", \"v\", 1, 0) = 0",
+                is_lsetxattr,
+            ),
             ("lstat(\"/f\", 0x1) = -1 ENOENT", is_lstat),
             ("mkdir(\"/tmp/dir\", 0755) = 0", is_mkdir),
             ("mkdirat(AT_FDCWD, \"/tmp/dir\", 0755) = 0", is_mkdirat),
@@ -527,6 +565,7 @@ mod tests {
                 "readv(3, [{iov_base=\"data\", iov_len=4}], 1) = 4",
                 is_readv,
             ),
+            ("removexattr(\"/tmp/f\", \"user.a\") = 0", is_removexattr),
             ("rename(\"/a\", \"/b\") = 0", is_rename),
             (
                 "renameat(AT_FDCWD, \"a\", AT_FDCWD, \"b\") = 0",
@@ -538,6 +577,10 @@ mod tests {
             ),
             ("rmdir(\"/tmp/dir\") = 0", is_rmdir),
             ("sendfile(4, 3, [0 => 10], 100) = 10", is_sendfile),
+            (
+                "setxattr(\"/tmp/f\", \"user.a\", \"v\", 1, 0) = 0",
+                is_setxattr,
+            ),
             (
                 "splice(5, NULL, 4, NULL, 64, SPLICE_F_MOVE) = 64",
                 is_splice,
@@ -655,6 +698,14 @@ mod tests {
             "mknodat(4, \"dev\", S_IFBLK|0600, makedev(0x8, 0)) = -1 EACCES",
             "sendfile(4, 3, [0 => 10], 100) = 10",
             "sendfile(1, 3, NULL, 100) = 100",
+            "fremovexattr(3, \"user.a\") = 0",
+            "fremovexattr(3</tmp/f>, \"user.a\") = -1 ENODATA",
+            "fsetxattr(3, \"user.a\", \"v\", 1, 0) = 0",
+            "fsetxattr(3</tmp/f>, \"user.a\", 0x7fff1234, 65537, XATTR_CREATE) = -1 ERANGE",
+            "lremovexattr(\"/tmp/f\", \"user.a\") = -1 ENODATA",
+            "lsetxattr(\"/tmp/f\", \"user.a\", \"hi\\0there\", 8, 0) = 0",
+            "removexattr(\"/tmp/f\", \"user.a\") = 0",
+            "setxattr(\"/tmp/f\", \"user.a\", \"a, b\", 4, XATTR_CREATE|XATTR_REPLACE) = 0",
             "stat(\"/etc/hostname\", 0x7ffd684fe7b0) = 0",
             "statx(AT_FDCWD, \"/f\", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffd684fe7b0) = -1 ENOENT",
             "statx(AT_FDCWD, \"/f\", AT_STATX_DONT_SYNC|AT_EMPTY_PATH, STATX_BASIC_STATS, \

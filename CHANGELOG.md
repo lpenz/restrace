@@ -49,6 +49,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `FileMode` mode type and the `Device` device type.
 - A typed `mknodat(2)` record, carried as the `Action::Mknodat` variant, with
   the `FileMode` mode type and the `Device` device type.
+- A typed `setxattr(2)` record, carried as the `Action::Setxattr` variant, with
+  the `XattrFlags` argument type and the `Bytes` buffer-value type.
+- A typed `fsetxattr(2)` record, carried as the `Action::Fsetxattr` variant,
+  with the `XattrFlags` argument type and the `Bytes` buffer-value type.
+- A typed `lsetxattr(2)` record, carried as the `Action::Lsetxattr` variant,
+  with the `XattrFlags` argument type and the `Bytes` buffer-value type.
+- A typed `removexattr(2)` record, carried as the `Action::Removexattr`
+  variant.
+- A typed `fremovexattr(2)` record, carried as the `Action::Fremovexattr`
+  variant.
+- A typed `lremovexattr(2)` record, carried as the `Action::Lremovexattr`
+  variant.
+- A new `XattrFlags` argument type for the `setxattr(2)` family, which prints
+  and parses the `XATTR_CREATE` and `XATTR_REPLACE` flags.
 - A typed `truncate(2)` record, carried as the `Action::Truncate` variant.
 - A typed `getdents(2)` record, carried as the `Action::Getdents` variant, with
   the `DirentList`, `Dirent` and `DirentType` entry types and the `LenResult`
