@@ -960,6 +960,49 @@ async fn parses_truncate() {
     assert!(truncate.result.is_ok(), "expected a successful truncate(2)");
 }
 
+/// Runs a Python one-liner that allocates space through the `fallocate(2)`
+/// system call, and checks that the call parses as `Action::Fallocate`.
+///
+/// Python does not expose `fallocate(2)` in its `os` module everywhere, so the
+/// test calls it through `ctypes`; it skips itself when `python3` is missing.
+#[::tokio::test]
+async fn parses_fallocate() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("restrace-fallocate-{}.txt", std::process::id()));
+    let script = format!(
+        "import ctypes, os; p = {path:?}; \
+         fd = os.open(p, os.O_CREAT | os.O_RDWR, 0o644); \
+         libc = ctypes.CDLL(None, use_errno=True); \
+         libc.fallocate.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_long, ctypes.c_long]; \
+         libc.fallocate.restype = ctypes.c_int; \
+         r = libc.fallocate(fd, 0, 0, 4096); \
+         assert r == 0, ctypes.get_errno(); \
+         os.close(fd); os.unlink(p)",
+        path = path.display().to_string()
+    );
+    let mut cmd = Command::new("python3");
+    cmd.args(["-c", &script]);
+    let lines = trace(cmd).await;
+    let _ = std::fs::remove_file(&path);
+
+    let fallocate = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Fallocate(fallocate) => Some(fallocate),
+            _ => None,
+        })
+        .expect("expected a parsed fallocate(2)");
+    assert_eq!(fallocate.mode, restrace::syscalls::FallocateMode(0));
+    assert_eq!(fallocate.offset, 0);
+    assert_eq!(fallocate.len, 4096);
+    assert!(
+        fallocate.result.is_ok(),
+        "expected a successful fallocate(2)"
+    );
+}
+
 /// Runs a shell command line whose `ldd(1)` writes its report with
 /// `writev(2)`, and checks that the call parses as `Action::Writev` with the
 /// bytes decoded from one of its buffers.

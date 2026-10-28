@@ -7,13 +7,13 @@
 use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Chmod, Chown, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3,
-    Execve, Execveat, Faccessat, Faccessat2, Fchdir, Fchmod, Fchmodat, Fchown, Fchownat, Fdatasync,
-    Fork, Fremovexattr, Fsetxattr, Fstat, Fsync, Ftruncate, Generic, Getcwd, Getdents, Getdents64,
-    Lchown, Link, Linkat, Lremovexattr, Lsetxattr, Lstat, Mkdir, Mkdirat, Mknod, Mknodat, Mmap,
-    Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2, Pwrite64,
-    Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Removexattr, Rename, Renameat, Renameat2,
-    Rmdir, Sendfile, Setxattr, Splice, Stat, Statx, Symlink, Symlinkat, Truncate, Unlink, Unlinkat,
-    Utimensat, Vfork, Write, Writev,
+    Execve, Execveat, Faccessat, Faccessat2, Fallocate, Fchdir, Fchmod, Fchmodat, Fchown, Fchownat,
+    Fdatasync, Fork, Fremovexattr, Fsetxattr, Fstat, Fsync, Ftruncate, Generic, Getcwd, Getdents,
+    Getdents64, Lchown, Link, Linkat, Lremovexattr, Lsetxattr, Lstat, Mkdir, Mkdirat, Mknod,
+    Mknodat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2,
+    Pwrite64, Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Removexattr, Rename, Renameat,
+    Renameat2, Rmdir, Sendfile, Setxattr, Splice, Stat, Statx, Symlink, Symlinkat, Truncate,
+    Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -57,6 +57,8 @@ pub enum Action {
     Faccessat(Faccessat),
     /// An `faccessat2(2)` call.
     Faccessat2(Faccessat2),
+    /// A `fallocate(2)` call.
+    Fallocate(Fallocate),
     /// An `fchdir(2)` call.
     Fchdir(Fchdir),
     /// An `fchmod(2)` call.
@@ -201,6 +203,7 @@ impl fmt::Display for Action {
             Self::Exit(exit) => exit.fmt(f),
             Self::Faccessat(syscall) => syscall.fmt(f),
             Self::Faccessat2(syscall) => syscall.fmt(f),
+            Self::Fallocate(syscall) => syscall.fmt(f),
             Self::Fchdir(syscall) => syscall.fmt(f),
             Self::Fchmod(syscall) => syscall.fmt(f),
             Self::Fchmodat(syscall) => syscall.fmt(f),
@@ -297,6 +300,7 @@ impl FromStr for Action {
                     "execveat" => Execveat::from_str(s).map(Self::Execveat),
                     "faccessat" => Faccessat::from_str(s).map(Self::Faccessat),
                     "faccessat2" => Faccessat2::from_str(s).map(Self::Faccessat2),
+                    "fallocate" => Fallocate::from_str(s).map(Self::Fallocate),
                     "fchdir" => Fchdir::from_str(s).map(Self::Fchdir),
                     "fchmod" => Fchmod::from_str(s).map(Self::Fchmod),
                     "fchmodat" => Fchmodat::from_str(s).map(Self::Fchmodat),
@@ -391,6 +395,7 @@ mod tests {
         let is_exit: fn(&Action) -> bool = |s| matches!(s, Action::Exit(_));
         let is_faccessat: fn(&Action) -> bool = |s| matches!(s, Action::Faccessat(_));
         let is_faccessat2: fn(&Action) -> bool = |s| matches!(s, Action::Faccessat2(_));
+        let is_fallocate: fn(&Action) -> bool = |s| matches!(s, Action::Fallocate(_));
         let is_fchdir: fn(&Action) -> bool = |s| matches!(s, Action::Fchdir(_));
         let is_fchmod: fn(&Action) -> bool = |s| matches!(s, Action::Fchmod(_));
         let is_fchmodat: fn(&Action) -> bool = |s| matches!(s, Action::Fchmodat(_));
@@ -484,6 +489,10 @@ mod tests {
             (
                 "faccessat2(AT_FDCWD, \"/f\", R_OK, AT_EACCESS) = 0",
                 is_faccessat2,
+            ),
+            (
+                "fallocate(3, FALLOC_FL_KEEP_SIZE, 0, 4096) = 0",
+                is_fallocate,
             ),
             ("fchdir(0) = 0", is_fchdir),
             ("fchmod(3, 0600) = 0", is_fchmod),
@@ -682,6 +691,9 @@ mod tests {
             "mmap(NULL, 0, PROT_NONE, MAP_FILE, 0, 0) = -1 EBADF",
             "execve(\"/bin/echo\", [\"echo\", \"hello\"], [\"PATH=/bin\"]) = 0",
             "faccessat2(AT_FDCWD, \"/f\", R_OK, AT_EACCESS) = 0",
+            "fallocate(3, 0, 0, 4096) = 0",
+            "fallocate(3, FALLOC_FL_KEEP_SIZE|FALLOC_FL_PUNCH_HOLE, -5, -6) = -1 EINVAL",
+            "fallocate(3</tmp/file>, 0x200 /* FALLOC_FL_??? */, 0, 4096) = -1 EBADF",
             "unlinkat(AT_FDCWD, \"/f\", 0) = -1 ENOENT",
             "symlinkat(\"t\", AT_FDCWD, \"l\") = -1 EEXIST",
             "truncate(\"/tmp/file\", 1024) = 0",

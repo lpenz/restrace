@@ -64,6 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A new `XattrFlags` argument type for the `setxattr(2)` family, which prints
   and parses the `XATTR_CREATE` and `XATTR_REPLACE` flags.
 - A typed `truncate(2)` record, carried as the `Action::Truncate` variant.
+- A typed `fallocate(2)` record, carried as the `Action::Fallocate` variant, with
+  the `FallocateMode` mode type.
 - A typed `getdents(2)` record, carried as the `Action::Getdents` variant, with
   the `DirentList`, `Dirent` and `DirentType` entry types and the `LenResult`
   return type.
