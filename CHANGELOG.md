@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   working directory are annotated with their resolved paths.
 - `EventIter` and `EventStream` now yield `io::Result<Event>`, so a trace read
   error is reported instead of ending the stream as if it were EOF.
+- `syscalls::Ret` gained an `Annotated` variant for return values that carry
+  `-y` associated information, and is no longer `Copy`.
 
 ### Fixed
 
@@ -60,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   character. Calls carrying such a string, for example `execve(2)` with an
   environment variable that holds terminal escapes, previously failed to parse
   and caused the whole call to be dropped.
+- Parse a generic call whose return value `strace` annotated with `-y`, such as
+  `fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>`. The generic result could
+  only hold a plain value or an errno, so these lines failed to parse and were
+  dropped from the trace.
 
 ## [0.2.0] - 2026-10-13
 

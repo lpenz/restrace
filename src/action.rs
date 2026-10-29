@@ -217,6 +217,10 @@ mod tests {
             ("rmdir(\"/tmp/dir\") = 0", is_rmdir),
             ("vfork() = 123", is_vfork),
             ("spill(0x1, 0x2) = 0", is_generic),
+            (
+                "fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>",
+                is_generic,
+            ),
         ] {
             let syscall = Action::from_str(line).unwrap();
             assert!(variant(&syscall), "line {line:?} parsed wrongly");
@@ -244,6 +248,8 @@ mod tests {
             "execve(\"/bin/echo\", [\"echo\", \"hello\"], [\"PATH=/bin\"]) = 0",
             "clone3({flags=CLONE_VM, exit_signal=SIGCHLD}, 88) = -1 EPERM",
             "spill(0x1000, -7, \"a, b\") = 0",
+            "fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>",
+            "fcntl(0</dev/null>, F_DUPFD, 10) = 10</tmp/gone>(deleted)",
             "+++ exited with 3 +++",
             "+++ killed by SIGSEGV (core dumped) +++",
         ] {

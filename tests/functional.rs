@@ -24,6 +24,15 @@ fn strace_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Returns whether `python3` is available in this environment.
+fn python3_available() -> bool {
+    Command::new("python3")
+        .arg("--version")
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
 /// Returns whether `strace` can trace forks in this environment.
 fn strace_can_trace_forks() -> bool {
     let out = Command::new("strace")
@@ -331,4 +340,35 @@ fn raw_trace(cmd: &[&str]) -> String {
     let text = std::fs::read_to_string(&path).expect("read the raw trace");
     std::fs::remove_file(&path).expect("remove the temporary trace");
     text
+}
+
+/// Checks that a generic call whose return value carries a `-y` annotation is
+/// parsed instead of dropped. `fcntl(F_DUPFD)` returns a descriptor that
+/// `strace -y` annotates with its path, which the generic result must keep.
+#[::tokio::test]
+async fn parses_generic_annotated_result() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let mut cmd = Command::new("python3");
+    cmd.args([
+        "-c",
+        "import fcntl, os; fd = os.open('/dev/null', os.O_RDONLY); \
+         fcntl.fcntl(fd, fcntl.F_DUPFD, 10)",
+    ]);
+    let lines = trace_with(cmd, ["-e", "trace=fcntl"]).await;
+
+    let annotated = lines.iter().find_map(|line| {
+        if let restrace::Action::Generic(generic) = &line.action
+            && let Some(annotation) = generic.result.annotation()
+        {
+            return Some((generic.name.as_str(), generic.result.value(), annotation));
+        }
+        None
+    });
+    assert_eq!(
+        annotated,
+        Some(("fcntl", Some(10), "</dev/null>")),
+        "expected the annotated fcntl result to be parsed: {lines:?}"
+    );
 }
