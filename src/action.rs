@@ -627,6 +627,10 @@ mod tests {
                 is_writev,
             ),
             ("spill(0x1, 0x2) = 0", is_generic),
+            (
+                "fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>",
+                is_generic,
+            ),
         ] {
             let syscall = Action::from_str(line).unwrap();
             assert!(variant(&syscall), "line {line:?} parsed wrongly");
@@ -744,6 +748,8 @@ mod tests {
              stx_attributes_mask=0, stx_rdev_major=0, stx_rdev_minor=0, stx_dev_major=0, \
              stx_dev_minor=30}) = -1 EINVAL",
             "spill(0x1000, -7, \"a, b\") = 0",
+            "fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>",
+            "fcntl(0</dev/null>, F_DUPFD, 10) = 10</tmp/gone>(deleted)",
             "+++ exited with 3 +++",
             "+++ killed by SIGSEGV (core dumped) +++",
         ] {

@@ -127,6 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads through a pointer again on exit and the call changed — such as the
   offset of `sendfile(2)` — round-trips as `[0 => 10]`. The parser accepts
   both this form and the older `[0] => [10]` that `strace` up to 6.x printed.
+- `syscalls::Ret` gained an `Annotated` variant for return values that carry
+  `-y` associated information, and is no longer `Copy`.
 
 ### Fixed
 
@@ -150,6 +152,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   character. Calls carrying such a string, for example `execve(2)` with an
   environment variable that holds terminal escapes, previously failed to parse
   and caused the whole call to be dropped.
+- Parse a generic call whose return value `strace` annotated with `-y`, such as
+  `fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>`. The generic result could
+  only hold a plain value or an errno, so these lines failed to parse and were
+  dropped from the trace.
 
 ## [0.2.0] - 2026-10-13
 

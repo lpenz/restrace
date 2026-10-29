@@ -1430,3 +1430,34 @@ async fn parses_y_annotated_fd() {
     );
     assert!(has_annotated_read, "expected annotated read fd: {lines:?}");
 }
+
+/// Checks that a generic call whose return value carries a `-y` annotation is
+/// parsed instead of dropped. `fcntl(F_DUPFD)` returns a descriptor that
+/// `strace -y` annotates with its path, which the generic result must keep.
+#[::tokio::test]
+async fn parses_generic_annotated_result() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let mut cmd = Command::new("python3");
+    cmd.args([
+        "-c",
+        "import fcntl, os; fd = os.open('/dev/null', os.O_RDONLY); \
+         fcntl.fcntl(fd, fcntl.F_DUPFD, 10)",
+    ]);
+    let lines = trace_with(cmd, ["-e", "trace=fcntl"]).await;
+
+    let annotated = lines.iter().find_map(|line| {
+        if let restrace::Action::Generic(generic) = &line.action
+            && let Some(annotation) = generic.result.annotation()
+        {
+            return Some((generic.name.as_str(), generic.result.value(), annotation));
+        }
+        None
+    });
+    assert_eq!(
+        annotated,
+        Some(("fcntl", Some(10), "</dev/null>")),
+        "expected the annotated fcntl result to be parsed: {lines:?}"
+    );
+}

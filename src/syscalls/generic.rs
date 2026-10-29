@@ -100,12 +100,25 @@ impl FromStr for Arg {
 }
 
 /// The return value of a generic system call.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ret {
     /// The value the call returned on success.
     Value(i64),
     /// The errno that caused the failure.
     Errno(Errno),
+    /// A value that `strace` annotated with associated information, such as
+    /// the descriptor `fcntl(2)` returned under `-y`:
+    /// `fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>`.
+    ///
+    /// The annotation is kept verbatim, from the opening `<` to the end of the
+    /// result, so the value round-trips exactly, including any marker that
+    /// follows the closing bracket, such as the `(deleted)` of a removed file.
+    Annotated {
+        /// The value the call returned.
+        value: i64,
+        /// The associated information, verbatim, starting with `<`.
+        annotation: String,
+    },
 }
 
 impl Ret {
@@ -121,6 +134,25 @@ impl Ret {
             Self::Value(raw)
         }
     }
+
+    /// Returns the numeric value of the result, or `None` for an errno.
+    #[must_use]
+    pub fn value(&self) -> Option<i64> {
+        match self {
+            Self::Value(value) | Self::Annotated { value, .. } => Some(*value),
+            Self::Errno(_) => None,
+        }
+    }
+
+    /// Returns the associated information `strace` appended to the value, or
+    /// `None` when the result carries none.
+    #[must_use]
+    pub fn annotation(&self) -> Option<&str> {
+        match self {
+            Self::Annotated { annotation, .. } => Some(annotation),
+            Self::Value(_) | Self::Errno(_) => None,
+        }
+    }
 }
 
 impl fmt::Display for Ret {
@@ -128,12 +160,14 @@ impl fmt::Display for Ret {
         match self {
             Self::Value(value) => write!(f, "{value}"),
             Self::Errno(errno) => write!(f, "-1 {errno}"),
+            Self::Annotated { value, annotation } => write!(f, "{value}{annotation}"),
         }
     }
 }
 
 /// Parses a return value as [`Display`](fmt::Display) writes it: a decimal
-/// value, or `-1` followed by the errno.
+/// value, `-1` followed by the errno, or a value followed by a `<...>`
+/// annotation.
 impl FromStr for Ret {
     type Err = ParseError;
 
@@ -144,6 +178,14 @@ impl FromStr for Ret {
             return Errno::from_str(parse::strip_description(errno.trim()))
                 .map(Self::Errno)
                 .map_err(|_| error());
+        }
+        let (value, annotation) = parse::split_annotation_verbatim(s);
+        if let Some(annotation) = annotation {
+            let value = value.parse::<i64>().map_err(|_| error())?;
+            return Ok(Self::Annotated {
+                value,
+                annotation: annotation.to_string(),
+            });
         }
         s.parse::<i64>().map(Self::Value).map_err(|_| error())
     }
@@ -241,6 +283,17 @@ mod tests {
     }
 
     #[test]
+    fn display_annotated() {
+        let result = Ret::Annotated {
+            value: 10,
+            annotation: "</dev/null>".to_string(),
+        };
+        assert_eq!(result.to_string(), "10</dev/null>");
+        assert_eq!(result.value(), Some(10));
+        assert_eq!(result.annotation(), Some("</dev/null>"));
+    }
+
+    #[test]
     fn display_typed_arguments() {
         let syscall = Generic {
             name: "mystery".to_string(),
@@ -317,6 +370,53 @@ mod tests {
     }
 
     #[test]
+    fn parse_annotated_result() {
+        let syscall =
+            Generic::from_str("fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>").unwrap();
+        assert_eq!(syscall.name, "fcntl");
+        assert_eq!(syscall.args[0], Arg::Raw("0</dev/null>".to_string()));
+        assert_eq!(
+            syscall.result,
+            Ret::Annotated {
+                value: 10,
+                annotation: "</dev/null>".to_string(),
+            }
+        );
+        assert_eq!(syscall.result.value(), Some(10));
+        assert_eq!(syscall.result.annotation(), Some("</dev/null>"));
+    }
+
+    #[test]
+    fn parse_annotated_result_keeps_suffix() {
+        for (line, annotation) in [
+            (
+                "mystery() = 3</dev/null<char 1:3>>",
+                "</dev/null<char 1:3>>",
+            ),
+            ("mystery() = 3</tmp/gone>(deleted)", "</tmp/gone>(deleted)"),
+            ("mystery() = 4<pipe:[123]>", "<pipe:[123]>"),
+        ] {
+            let syscall = Generic::from_str(line).unwrap();
+            assert_eq!(syscall.result.annotation(), Some(annotation));
+            assert_eq!(syscall.to_string(), line);
+        }
+    }
+
+    #[test]
+    fn parse_annotated_result_invalid() {
+        assert!(Ret::from_str("</dev/null>").is_err());
+        assert!(Ret::from_str("3</tmp/unclosed").is_err());
+    }
+
+    #[test]
+    fn ret_accessors() {
+        assert_eq!(Ret::Value(3).value(), Some(3));
+        assert_eq!(Ret::Value(3).annotation(), None);
+        assert_eq!(Ret::Errno(Errno::ENOENT).value(), None);
+        assert_eq!(Ret::Errno(Errno::ENOENT).annotation(), None);
+    }
+
+    #[test]
     fn parse_invalid() {
         assert!(Generic::from_str("mystery(0x1) 0").is_err());
         assert!(Generic::from_str("mystery 0x1) = 0").is_err());
@@ -334,6 +434,10 @@ mod tests {
             "syscall_0x123() = -1 ENOENT",
             "mystery(42, -7, 0xdead, \"a, b\") = -1",
             "mystery(1, 0x2, \"quote\\\"here\", [\"x\", \"y\"]) = 4294967296",
+            "fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>",
+            "mystery() = 3</dev/null<char 1:3>>",
+            "mystery() = 3</tmp/gone>(deleted)",
+            "mystery() = 4<pipe:[123]>",
         ] {
             assert_eq!(Generic::from_str(line).unwrap().to_string(), line);
         }

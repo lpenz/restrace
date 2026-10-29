@@ -220,6 +220,35 @@ pub(crate) fn split_annotation(input: &str) -> (&str, Option<&str>) {
     (input, None)
 }
 
+/// Like [`split_annotation`], but keeps the annotation verbatim: the returned
+/// suffix starts at the opening `<` and runs to the end of the input, so it
+/// includes any marker `strace` appends after the closing bracket, such as the
+/// `(deleted)` of a removed file.
+///
+/// Returns the bare value and the suffix, or the whole input and `None` when
+/// there is no balanced annotation.
+pub(crate) fn split_annotation_verbatim(input: &str) -> (&str, Option<&str>) {
+    let input = input.trim();
+    let Some(open) = input.find('<') else {
+        return (input, None);
+    };
+    let rest = &input[open + 1..];
+    let mut depth = 1u32;
+    for c in rest.chars() {
+        match c {
+            '<' => depth += 1,
+            '>' => {
+                depth -= 1;
+                if depth == 0 {
+                    return (input[..open].trim_end(), Some(&input[open..]));
+                }
+            }
+            _ => {}
+        }
+    }
+    (input, None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -377,6 +406,36 @@ mod tests {
     fn split_annotation_malformed() {
         assert_eq!(
             split_annotation("3</tmp/unclosed"),
+            ("3</tmp/unclosed", None)
+        );
+    }
+
+    #[test]
+    fn split_annotation_verbatim_plain() {
+        assert_eq!(split_annotation_verbatim("3"), ("3", None));
+        assert_eq!(split_annotation_verbatim(" 3 "), ("3", None));
+    }
+
+    #[test]
+    fn split_annotation_verbatim_keeps_suffix() {
+        assert_eq!(
+            split_annotation_verbatim("10</dev/null>"),
+            ("10", Some("</dev/null>"))
+        );
+        assert_eq!(
+            split_annotation_verbatim("3</dev/null<char 1:3>>"),
+            ("3", Some("</dev/null<char 1:3>>"))
+        );
+        assert_eq!(
+            split_annotation_verbatim("3</tmp/gone>(deleted)"),
+            ("3", Some("</tmp/gone>(deleted)"))
+        );
+    }
+
+    #[test]
+    fn split_annotation_verbatim_malformed() {
+        assert_eq!(
+            split_annotation_verbatim("3</tmp/unclosed"),
             ("3</tmp/unclosed", None)
         );
     }
