@@ -13,7 +13,7 @@ use crate::syscalls::{
     Mknodat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2,
     Pwrite64, Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Removexattr, Rename, Renameat,
     Renameat2, Rmdir, Sendfile, Setxattr, Splice, Stat, Statx, Symlink, Symlinkat, Tee, Truncate,
-    Unlink, Unlinkat, Utimensat, Vfork, Write, Writev,
+    Unlink, Unlinkat, Utimensat, Vfork, Vmsplice, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -177,6 +177,8 @@ pub enum Action {
     Utimensat(Utimensat),
     /// A `vfork(2)` call.
     Vfork(Vfork),
+    /// A `vmsplice(2)` call.
+    Vmsplice(Vmsplice),
     /// A `write(2)` call.
     Write(Write),
     /// A `writev(2)` call.
@@ -265,6 +267,7 @@ impl fmt::Display for Action {
             Self::Unlinkat(syscall) => syscall.fmt(f),
             Self::Utimensat(syscall) => syscall.fmt(f),
             Self::Vfork(syscall) => syscall.fmt(f),
+            Self::Vmsplice(syscall) => syscall.fmt(f),
             Self::Write(syscall) => syscall.fmt(f),
             Self::Writev(syscall) => syscall.fmt(f),
             Self::Generic(syscall) => syscall.fmt(f),
@@ -363,6 +366,7 @@ impl FromStr for Action {
                     "unlinkat" => Unlinkat::from_str(s).map(Self::Unlinkat),
                     "utimensat" => Utimensat::from_str(s).map(Self::Utimensat),
                     "vfork" => Vfork::from_str(s).map(Self::Vfork),
+                    "vmsplice" => Vmsplice::from_str(s).map(Self::Vmsplice),
                     "write" => Write::from_str(s).map(Self::Write),
                     "writev" => Writev::from_str(s).map(Self::Writev),
                     _ => return Generic::from_str(s).map(Self::Generic),
@@ -460,6 +464,7 @@ mod tests {
         let is_unlink: fn(&Action) -> bool = |s| matches!(s, Action::Unlink(_));
         let is_unlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Unlinkat(_));
         let is_vfork: fn(&Action) -> bool = |s| matches!(s, Action::Vfork(_));
+        let is_vmsplice: fn(&Action) -> bool = |s| matches!(s, Action::Vmsplice(_));
         let is_write: fn(&Action) -> bool = |s| matches!(s, Action::Write(_));
         let is_writev: fn(&Action) -> bool = |s| matches!(s, Action::Writev(_));
         let is_generic: fn(&Action) -> bool = |s| matches!(s, Action::Generic(_));
@@ -612,6 +617,10 @@ mod tests {
             ("unlink(\"/f\") = 0", is_unlink),
             ("unlinkat(AT_FDCWD, \"/f\", 0) = 0", is_unlinkat),
             ("vfork() = 123", is_vfork),
+            (
+                "vmsplice(3, [{iov_base=\"data\", iov_len=4}], 1, 0) = 4",
+                is_vmsplice,
+            ),
             ("write(1, \"hi\\n\", 3) = 3", is_write),
             (
                 "writev(1, [{iov_base=\"hi\\n\", iov_len=3}], 1) = 3",
@@ -712,6 +721,8 @@ mod tests {
             "splice(5, NULL, 4, NULL, 0, 0x10 /* SPLICE_F_??? */) = 0",
             "tee(3, 4, 64, SPLICE_F_NONBLOCK) = -1 EAGAIN",
             "tee(3, 4, 4096, SPLICE_F_MOVE|SPLICE_F_MORE) = 4096",
+            "vmsplice(3, [{iov_base=\"hi\", iov_len=2}], 1, 0) = 2",
+            "vmsplice(3, 0x1, 1, SPLICE_F_GIFT) = -1 EFAULT",
             "mknod(\"/tmp/fifo\", S_IFIFO|0644) = 0",
             "mknod(\"/tmp/dev\", S_IFCHR|0666, makedev(0x1, 0x3)) = -1 EPERM",
             "mknodat(AT_FDCWD, \"/tmp/fifo\", S_IFIFO|0644) = 0",
