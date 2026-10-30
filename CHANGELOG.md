@@ -118,6 +118,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the `Fd` of `FdResult` now use it, and `DirFd` gained the same optional
   path so the `*at` records round-trip `AT_FDCWD</cwd>` and `4</dir>`. The
   `pipe2(2)` record's descriptor array uses it too.
+- `Reconstructor` is now public, so a trace captured with `strace -o FILE` can
+  be parsed line by line with the same split-call reconstruction the streaming
+  APIs use.
 
 ### Changed
 

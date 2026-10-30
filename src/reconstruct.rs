@@ -91,15 +91,20 @@ impl Fragment {
 /// it also drops the pid's unfinished piece. The unfinished piece of a pid
 /// that no line ever closes stays in memory; it is bounded by the number of
 /// such pids.
+///
+/// This is the parser behind [`crate::stdprocess::stream`]. Use it directly
+/// to parse a trace that was captured to a file with `strace -o FILE`, or any
+/// other source of trace lines, feeding the lines in the order they were
+/// written.
 #[derive(Debug, Default)]
-pub(crate) struct Reconstructor {
+pub struct Reconstructor {
     unfinished: HashMap<u32, (SystemTime, String)>,
 }
 
 impl Reconstructor {
     /// Builds a reconstructor with no unfinished call.
     #[must_use]
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
@@ -111,8 +116,9 @@ impl Reconstructor {
     /// pid that preceded it, producing the complete event. An unfinished line
     /// stores its beginning and yields `None`; so do lines that are not
     /// processed into system calls, including a resumed line whose beginning
-    /// was never seen.
-    pub(crate) fn push(&mut self, line: &str) -> Option<Event> {
+    /// was never seen and a call whose merged text the syscall decoder cannot
+    /// read.
+    pub fn push(&mut self, line: &str) -> Option<Event> {
         match Fragment::parse(line)? {
             Fragment::Complete(event) => {
                 if matches!(event.action, Action::Exit(_)) {
@@ -152,6 +158,29 @@ mod tests {
         assert_eq!(event.pid, 394527);
         assert_eq!(event.time, epoch(1_700_000_000, 0));
         assert!(matches!(event.action, Action::Close(_)));
+    }
+
+    #[test]
+    fn parse_from_reader() {
+        use std::io::{BufRead, BufReader, Cursor};
+
+        let trace = "\
+1 1700000000.000001 mystery(0x1 <unfinished ...>\n\
+2 1700000000.000002 close(0) = 0\n\
+1 1700000000.000003 <... mystery resumed>, 0x2) = 0\n\
+1 1700000000.000004 +++ exited with 0 +++\n";
+        let mut reconstructor = Reconstructor::new();
+        let events: Vec<Event> = BufReader::new(Cursor::new(trace))
+            .lines()
+            .map_while(Result::ok)
+            .filter_map(|line| reconstructor.push(&line))
+            .collect();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].pid, 2);
+        assert!(matches!(events[0].action, Action::Close(_)));
+        assert_eq!(events[1].pid, 1);
+        assert_eq!(events[1].action.to_string(), "mystery(0x1, 0x2) = 0");
+        assert!(matches!(events[2].action, Action::Exit(_)));
     }
 
     #[test]
