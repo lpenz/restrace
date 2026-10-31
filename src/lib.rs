@@ -22,10 +22,11 @@
 //!   across an `<unfinished ...>` / `<... resumed>` pair, for traces read from
 //!   a file or any other [`std::io::BufRead`].
 //! - [`stdprocess`]: run a [`std::process::Command`] under `strace` and get a
-//!   blocking iterator of [`Event`]s with [`stdprocess::stream`].
+//!   blocking iterator of parsed [`Event`]s, each wrapped in a
+//!   [`std::io::Result`], with [`stdprocess::stream`].
 //! - [`tokio`]: the same for a `tokio::process::Command`, as an async stream
-//!   of [`Event`]s; only compiled with the `tokio` feature, which is
-//!   enabled by default.
+//!   of [`Event`]s wrapped in [`std::io::Result`]; only compiled with the
+//!   `tokio` feature, which is enabled by default.
 //!
 //! `strace` must be installed in the environment where the commands run; this
 //! crate only spawns it and parses its output.
@@ -107,7 +108,7 @@
 //! cmd.arg("-l");
 //! let mut lines = restrace::stdprocess::stream(cmd).unwrap();
 //! for line in lines.by_ref() {
-//!     println!("{line}");
+//!     println!("{}", line.expect("read trace"));
 //! }
 //! lines.wait().unwrap();
 //! ```
@@ -128,7 +129,7 @@
 //! cmd.arg("-l");
 //! let mut lines = restrace::tokio::stream(cmd)?;
 //! while let Some(line) = lines.next().await {
-//!     println!("{line}");
+//!     println!("{}", line?);
 //! }
 //! lines.wait().await?;
 //! # Ok(()) }

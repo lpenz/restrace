@@ -49,7 +49,7 @@ async fn trace(cmd: Command) -> Vec<Event> {
     let mut lines = restrace::tokio::stream(TokioCommand::from(cmd)).expect("spawn strace");
     let mut collected = Vec::new();
     while let Some(line) = lines.next().await {
-        collected.push(line);
+        collected.push(line.expect("read trace"));
     }
     lines.wait().await.expect("wait for strace");
     collected
@@ -73,7 +73,23 @@ where
         restrace::tokio::stream_with(TokioCommand::from(cmd), extra).expect("spawn strace");
     let mut collected = Vec::new();
     while let Some(line) = lines.next().await {
-        collected.push(line);
+        collected.push(line.expect("read trace"));
+    }
+    lines.wait().await.expect("wait for strace");
+    collected
+}
+
+/// Like [`trace`], but uses the provided `strace` options.
+async fn trace_with_options(cmd: Command, options: restrace::StraceOptions) -> Vec<Event> {
+    let mut lines = restrace::tokio::stream_with_options(
+        TokioCommand::from(cmd),
+        options,
+        [] as [&std::ffi::OsStr; 0],
+    )
+    .expect("spawn strace");
+    let mut collected = Vec::new();
+    while let Some(line) = lines.next().await {
+        collected.push(line.expect("read trace"));
     }
     lines.wait().await.expect("wait for strace");
     collected
