@@ -76,6 +76,10 @@ pub fn under_strace_with_options(cmd: Command, options: StraceOptions) -> Comman
 ///
 /// A reconstructed event is yielded when its resumed line is reached, so
 /// events are not necessarily ordered by timestamp.
+///
+/// Every item is an [`std::io::Result`]: a trace line that cannot be read,
+/// including one that is not valid UTF-8, is yielded as an error instead of
+/// ending the stream, so a truncated or failed trace is detectable.
 pub struct EventStream {
     child: Child,
     lines: Lines<BufReader<TokioFile>>,
@@ -93,7 +97,7 @@ impl EventStream {
 }
 
 impl Stream for EventStream {
-    type Item = Event;
+    type Item = ::std::io::Result<Event>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -102,10 +106,11 @@ impl Stream for EventStream {
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(Ok(Some(text))) => {
                     if let Some(line) = this.reconstructor.push(&text) {
-                        return Poll::Ready(Some(line));
+                        return Poll::Ready(Some(Ok(line)));
                     }
                 }
-                Poll::Ready(Ok(None) | Err(_)) => return Poll::Ready(None),
+                Poll::Ready(Err(error)) => return Poll::Ready(Some(Err(error))),
+                Poll::Ready(Ok(None)) => return Poll::Ready(None),
             }
         }
     }
@@ -340,7 +345,7 @@ mod tests {
         let mut lines = stream(cmd).expect("spawn strace");
         let mut collected = Vec::new();
         while let Some(line) = lines.next().await {
-            collected.push(line);
+            collected.push(line.expect("read trace"));
         }
         lines.wait().await.expect("wait for strace");
         assert!(!collected.is_empty());
@@ -358,7 +363,7 @@ mod tests {
         let mut lines = stream_with(cmd, ["-e", "trace=openat"]).expect("spawn strace");
         let mut collected = Vec::new();
         while let Some(line) = lines.next().await {
-            collected.push(line);
+            collected.push(line.expect("read trace"));
         }
         lines.wait().await.expect("wait for strace");
         assert!(!collected.is_empty());
@@ -385,7 +390,7 @@ mod tests {
         let mut lines = stream_with(cmd, ["-o", "/dev/null"]).expect("spawn strace");
         let mut collected = Vec::new();
         while let Some(line) = lines.next().await {
-            collected.push(line);
+            collected.push(line.expect("read trace"));
         }
         lines.wait().await.expect("wait for strace");
         assert!(!collected.is_empty(), "expected the trace over the pipe");

@@ -269,6 +269,10 @@ pub fn under_strace_with_options(cmd: Command, options: StraceOptions) -> Comman
 ///
 /// A reconstructed event is yielded when its resumed line is reached, so
 /// events are not necessarily ordered by timestamp.
+///
+/// Every item is an [`std::io::Result`]: a trace line that cannot be read,
+/// including one that is not valid UTF-8, is yielded as an error instead of
+/// ending the iterator, so a truncated or failed trace is detectable.
 pub struct EventIter {
     child: Child,
     lines: Lines<BufReader<File>>,
@@ -285,20 +289,28 @@ impl EventIter {
     }
 }
 
-impl Iterator for EventIter {
-    type Item = Event;
-
-    fn next(&mut self) -> Option<Event> {
-        loop {
-            match self.lines.next() {
-                Some(Ok(text)) => {
-                    if let Some(line) = self.reconstructor.push(&text) {
-                        return Some(line);
-                    }
+fn next_event<R: BufRead>(
+    lines: &mut Lines<R>,
+    reconstructor: &mut Reconstructor,
+) -> Option<::std::io::Result<Event>> {
+    loop {
+        match lines.next() {
+            Some(Ok(text)) => {
+                if let Some(event) = reconstructor.push(&text) {
+                    return Some(Ok(event));
                 }
-                Some(Err(_)) | None => return None,
             }
+            Some(Err(error)) => return Some(Err(error)),
+            None => return None,
         }
+    }
+}
+
+impl Iterator for EventIter {
+    type Item = ::std::io::Result<Event>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        next_event(&mut self.lines, &mut self.reconstructor)
     }
 }
 
@@ -565,10 +577,23 @@ mod tests {
         let mut cmd = Command::new("sh");
         cmd.args(["-c", "sleep 0.02 & wait"]);
         let mut lines = stream(cmd).expect("spawn strace");
-        let collected: Vec<Event> = lines.by_ref().collect();
+        let collected: Vec<Event> = lines
+            .by_ref()
+            .map(|line| line.expect("read trace"))
+            .collect();
         lines.wait().expect("wait for strace");
         assert!(!collected.is_empty());
         assert!(collected.iter().map(|line| line.pid).all(|pid| pid > 0));
+    }
+
+    #[test]
+    fn stream_reports_invalid_utf8() {
+        let mut lines = BufReader::new(std::io::Cursor::new(b"\xff\n")).lines();
+        let mut reconstructor = Reconstructor::new();
+        let error = next_event(&mut lines, &mut reconstructor)
+            .expect("an item")
+            .expect_err("an error");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
     }
 
     #[test]
@@ -582,7 +607,10 @@ mod tests {
         let mut cmd = Command::new("sh");
         cmd.args(["-c", "true"]);
         let mut lines = stream_with(cmd, ["-o", "/dev/null"]).expect("spawn strace");
-        let collected: Vec<Event> = lines.by_ref().collect();
+        let collected: Vec<Event> = lines
+            .by_ref()
+            .map(|line| line.expect("read trace"))
+            .collect();
         lines.wait().expect("wait for strace");
         assert!(!collected.is_empty(), "expected the trace over the pipe");
         assert!(

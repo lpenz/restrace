@@ -79,7 +79,7 @@ let mut cmd = Command::new("ls");
 cmd.arg("-l");
 let mut lines = restrace::stdprocess::stream(cmd).unwrap();
 for line in lines.by_ref() {
-    println!("{line}");
+    println!("{}", line.expect("read trace"));
 }
 lines.wait().unwrap();
 ```
@@ -100,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("-l");
     let mut lines = restrace::tokio::stream(cmd)?;
     while let Some(line) = lines.next().await {
-        println!("{line}");
+        println!("{}", line?);
     }
     lines.wait().await?;
     Ok(())

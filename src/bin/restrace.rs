@@ -126,6 +126,7 @@ async fn main() -> Result<()> {
     };
 
     while let Some(line) = lines.next().await {
+        let line = line.wrap_err("reading the trace")?;
         output.write_all(line.to_string().as_bytes()).await?;
         output.write_all(b"\n").await?;
     }

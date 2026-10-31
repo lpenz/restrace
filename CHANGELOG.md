@@ -137,6 +137,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   both this form and the older `[0] => [10]` that `strace` up to 6.x printed.
 - `syscalls::Ret` gained an `Annotated` variant for return values that carry
   `-y` associated information, and is no longer `Copy`.
+- `EventIter` and `EventStream` now yield `io::Result<Event>`, so a trace read
+  error is reported instead of ending the stream as if it were EOF.
 - The `envp` field of `Execve` and `Execveat` is now an `EnvVars` value instead
   of a `Vec<CString>`, so an abbreviated environment round-trips. `from_raw`
   still accepts a `Vec<CString>` through `Into<EnvVars>`.

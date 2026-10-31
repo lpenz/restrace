@@ -73,7 +73,7 @@ async fn trace(cmd: Command) -> Vec<Event> {
     let mut lines = restrace::tokio::stream(TokioCommand::from(cmd)).expect("spawn strace");
     let mut collected = Vec::new();
     while let Some(line) = lines.next().await {
-        collected.push(line);
+        collected.push(line.expect("read trace"));
     }
     lines.wait().await.expect("wait for strace");
     collected
@@ -97,7 +97,7 @@ where
         restrace::tokio::stream_with(TokioCommand::from(cmd), extra).expect("spawn strace");
     let mut collected = Vec::new();
     while let Some(line) = lines.next().await {
-        collected.push(line);
+        collected.push(line.expect("read trace"));
     }
     lines.wait().await.expect("wait for strace");
     collected
@@ -113,7 +113,7 @@ async fn trace_with_options(cmd: Command, options: restrace::StraceOptions) -> V
     .expect("spawn strace");
     let mut collected = Vec::new();
     while let Some(line) = lines.next().await {
-        collected.push(line);
+        collected.push(line.expect("read trace"));
     }
     lines.wait().await.expect("wait for strace");
     collected
