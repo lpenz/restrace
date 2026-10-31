@@ -140,6 +140,28 @@ impl Iterator for EventIter {
 /// Returns an error if the trace pipe cannot be created or `strace` cannot be
 /// spawned.
 pub fn stream(cmd: Command) -> ::std::io::Result<EventIter> {
+    stream_with(cmd, [] as [&OsStr; 0])
+}
+
+/// Like [`stream`], but inserts `extra` `strace` arguments between the base
+/// flags and the traced program.
+///
+/// This is a lower-level helper: prefer [`stream`] unless you need the extra
+/// `strace` arguments.
+///
+/// The internal `-o /dev/fd/3` is placed after `extra`, so it takes precedence
+/// over any output redirection in `extra` (such as `-o FILE`): the trace is
+/// always read from the dedicated pipe.
+///
+/// # Errors
+///
+/// Returns an error if the trace pipe cannot be created or `strace` cannot be
+/// spawned.
+pub fn stream_with<I, S>(cmd: Command, extra: I) -> ::std::io::Result<EventIter>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
     let mut fds = [0 as libc::c_int; 2];
     if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
         return Err(::std::io::Error::last_os_error());
@@ -157,7 +179,16 @@ pub fn stream(cmd: Command) -> ::std::io::Result<EventIter> {
         }
     }
     let trace_path = format!("/dev/fd/{TRACE_FD}");
-    let mut wrapped = under_strace_with(cmd, ["-o", trace_path.as_str()]);
+    // The output redirection goes last so that it takes precedence over any
+    // output selection in `extra`: `strace` keeps the last `-o`, and the trace
+    // must reach the pipe for the iterator to yield events.
+    let mut args: Vec<std::ffi::OsString> = extra
+        .into_iter()
+        .map(|arg| arg.as_ref().to_os_string())
+        .collect();
+    args.push("-o".into());
+    args.push(trace_path.into());
+    let mut wrapped = under_strace_with(cmd, args);
     unsafe {
         wrapped.pre_exec(move || {
             // Give strace its own descriptor for the trace output. If it was
@@ -300,5 +331,26 @@ mod tests {
         lines.wait().expect("wait for strace");
         assert!(!collected.is_empty());
         assert!(collected.iter().map(|line| line.pid).all(|pid| pid > 0));
+    }
+
+    #[test]
+    fn stream_with_caller_output_still_streams() {
+        if !strace_can_trace_forks() {
+            return;
+        }
+        // A caller-supplied `-o` must not steal the trace from the pipe: the
+        // internal redirection is placed last and wins, so the iterator still
+        // yields the parsed events.
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "true"]);
+        let mut lines = stream_with(cmd, ["-o", "/dev/null"]).expect("spawn strace");
+        let collected: Vec<Event> = lines.by_ref().collect();
+        lines.wait().expect("wait for strace");
+        assert!(!collected.is_empty(), "expected the trace over the pipe");
+        assert!(
+            collected
+                .iter()
+                .any(|line| matches!(line.action, crate::Action::Exit(_)))
+        );
     }
 }

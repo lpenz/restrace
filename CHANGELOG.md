@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `stdprocess::stream_with` and, under the `tokio` feature, `tokio::stream_with`
+  and `tokio::under_strace_with`, to run a command under `strace` with extra
+  `strace` arguments while still reading and parsing the trace from a dedicated
+  pipe.
+
 ### Fixed
 
 - Run `strace` with `-a 0`, which stops it from aligning the `=` of a return

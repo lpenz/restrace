@@ -6,7 +6,7 @@
 //! trace with [`restrace::Event`].
 //!
 //! Traces are read through [`restrace::tokio::stream`], the same path used by
-//! the `restrace run` command: `strace --follow-forks -o /dev/fd/3` writes
+//! the `restrace run` command: `strace --follow-forks -a 0 -o /dev/fd/3` writes
 //! every line with a bare pid prefix, which [`restrace::Event`] parses
 //! into a mandatory pid.
 
@@ -55,6 +55,13 @@ async fn trace(cmd: Command) -> Vec<Event> {
     collected
 }
 
+/// Like [`trace`], but runs a shell command line.
+async fn trace_shell(script: &str) -> Vec<Event> {
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", script]);
+    trace(cmd).await
+}
+
 #[::tokio::test]
 async fn traces_a_single_process() {
     if !strace_available() {
@@ -83,6 +90,35 @@ async fn traces_a_single_process() {
     assert!(
         lines.iter().all(|line| line.pid > 0),
         "expected a pid on every line: {lines:?}"
+    );
+}
+
+/// Runs a shell command line under `strace` and checks that the new
+/// file-operation syscalls parse from a real trace.
+///
+/// `strace` is started with `-a 0`, so a short call like `close(2)` has no
+/// column padding before its `=`, and it appends a parenthesized description
+/// to a failing `errno`. The dynamic loader's `access(2)` check on
+/// `/etc/ld.so.preload` covers the short call with an `ENOENT` description,
+/// and `ln`/`rm` cover the link/symlink/unlink types.
+#[::tokio::test]
+async fn parses_described_and_short_syscalls() {
+    if !strace_available() {
+        return;
+    }
+    let lines = trace_shell(
+        "d=$(mktemp -d); touch $d/a; ln $d/a $d/b; ln -s $d/a $d/c; \
+         rm $d/b $d/c $d/a; rmdir $d; test -r /nonexistent; rm $d/missing 2>/dev/null",
+    )
+    .await;
+
+    // `close(2)` is a short call; it must parse as a typed Close and not fall
+    // back to Generic.
+    assert!(
+        lines
+            .iter()
+            .any(|line| matches!(line.action, restrace::Action::Close(_))),
+        "expected a parsed close(2): {lines:?}"
     );
 }
 
