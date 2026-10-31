@@ -126,6 +126,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A new `EnvVars` value type for the `envp` argument of `execve(2)` and
   `execveat(2)`. It keeps the full array when `strace` decodes it and the
   abbreviated `0x... /* N vars */` form that `strace` prints without `-v`.
+- Typed `utimes(2)` and `futimesat(2)` records, carried as the
+  `Action::Utimes` and `Action::Futimesat` variants, with the shared
+  `Timeval` and `Timevals` argument types.
 
 ### Changed
 

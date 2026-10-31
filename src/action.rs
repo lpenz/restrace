@@ -8,12 +8,12 @@ use crate::exit::Exit;
 use crate::syscalls::{
     Access, Chdir, Chmod, Chown, Clone, Clone3, Close, CopyFileRange, Creat, Dup, Dup2, Dup3,
     Execve, Execveat, Faccessat, Faccessat2, Fallocate, Fchdir, Fchmod, Fchmodat, Fchown, Fchownat,
-    Fdatasync, Fork, Fremovexattr, Fsetxattr, Fstat, Fsync, Ftruncate, Generic, Getcwd, Getdents,
-    Getdents64, Lchown, Link, Linkat, Lremovexattr, Lsetxattr, Lstat, Mkdir, Mkdirat, Mknod,
-    Mknodat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv, Preadv2,
-    Pwrite64, Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Removexattr, Rename, Renameat,
-    Renameat2, Rmdir, Sendfile, Setxattr, Splice, Stat, Statx, Symlink, Symlinkat, Tee, Truncate,
-    Unlink, Unlinkat, Utimensat, Vfork, Vmsplice, Write, Writev,
+    Fdatasync, Fork, Fremovexattr, Fsetxattr, Fstat, Fsync, Ftruncate, Futimesat, Generic, Getcwd,
+    Getdents, Getdents64, Lchown, Link, Linkat, Lremovexattr, Lsetxattr, Lstat, Mkdir, Mkdirat,
+    Mknod, Mknodat, Mmap, Newfstatat, Open, Openat, Openat2, ParseError, Pipe2, Pread64, Preadv,
+    Preadv2, Pwrite64, Pwritev, Pwritev2, Read, Readlink, Readlinkat, Readv, Removexattr, Rename,
+    Renameat, Renameat2, Rmdir, Sendfile, Setxattr, Splice, Stat, Statx, Symlink, Symlinkat, Tee,
+    Truncate, Unlink, Unlinkat, Utimensat, Utimes, Vfork, Vmsplice, Write, Writev,
 };
 use std::fmt;
 use std::str::FromStr;
@@ -83,6 +83,8 @@ pub enum Action {
     Fsync(Fsync),
     /// An `ftruncate(2)` call.
     Ftruncate(Ftruncate),
+    /// A `futimesat(2)` call.
+    Futimesat(Futimesat),
     /// A `getcwd(2)` call.
     Getcwd(Getcwd),
     /// A `getdents(2)` call.
@@ -173,6 +175,8 @@ pub enum Action {
     Unlink(Unlink),
     /// An `unlinkat(2)` call.
     Unlinkat(Unlinkat),
+    /// A `utimes(2)` call.
+    Utimes(Utimes),
     /// A `utimensat(2)` call.
     Utimensat(Utimensat),
     /// A `vfork(2)` call.
@@ -220,6 +224,7 @@ impl fmt::Display for Action {
             Self::Fstat(syscall) => syscall.fmt(f),
             Self::Fsync(syscall) => syscall.fmt(f),
             Self::Ftruncate(syscall) => syscall.fmt(f),
+            Self::Futimesat(syscall) => syscall.fmt(f),
             Self::Getcwd(syscall) => syscall.fmt(f),
             Self::Getdents(syscall) => syscall.fmt(f),
             Self::Getdents64(syscall) => syscall.fmt(f),
@@ -265,6 +270,7 @@ impl fmt::Display for Action {
             Self::Truncate(syscall) => syscall.fmt(f),
             Self::Unlink(syscall) => syscall.fmt(f),
             Self::Unlinkat(syscall) => syscall.fmt(f),
+            Self::Utimes(syscall) => syscall.fmt(f),
             Self::Utimensat(syscall) => syscall.fmt(f),
             Self::Vfork(syscall) => syscall.fmt(f),
             Self::Vmsplice(syscall) => syscall.fmt(f),
@@ -319,6 +325,7 @@ impl FromStr for Action {
                     "fstat" => Fstat::from_str(s).map(Self::Fstat),
                     "fsync" => Fsync::from_str(s).map(Self::Fsync),
                     "ftruncate" => Ftruncate::from_str(s).map(Self::Ftruncate),
+                    "futimesat" => Futimesat::from_str(s).map(Self::Futimesat),
                     "getcwd" => Getcwd::from_str(s).map(Self::Getcwd),
                     "getdents" => Getdents::from_str(s).map(Self::Getdents),
                     "getdents64" => Getdents64::from_str(s).map(Self::Getdents64),
@@ -364,6 +371,7 @@ impl FromStr for Action {
                     "truncate" => Truncate::from_str(s).map(Self::Truncate),
                     "unlink" => Unlink::from_str(s).map(Self::Unlink),
                     "unlinkat" => Unlinkat::from_str(s).map(Self::Unlinkat),
+                    "utimes" => Utimes::from_str(s).map(Self::Utimes),
                     "utimensat" => Utimensat::from_str(s).map(Self::Utimensat),
                     "vfork" => Vfork::from_str(s).map(Self::Vfork),
                     "vmsplice" => Vmsplice::from_str(s).map(Self::Vmsplice),
@@ -418,6 +426,7 @@ mod tests {
         let is_fstat: fn(&Action) -> bool = |s| matches!(s, Action::Fstat(_));
         let is_fsync: fn(&Action) -> bool = |s| matches!(s, Action::Fsync(_));
         let is_ftruncate: fn(&Action) -> bool = |s| matches!(s, Action::Ftruncate(_));
+        let is_futimesat: fn(&Action) -> bool = |s| matches!(s, Action::Futimesat(_));
         let is_getcwd: fn(&Action) -> bool = |s| matches!(s, Action::Getcwd(_));
         let is_getdents: fn(&Action) -> bool = |s| matches!(s, Action::Getdents(_));
         let is_getdents64: fn(&Action) -> bool = |s| matches!(s, Action::Getdents64(_));
@@ -463,6 +472,8 @@ mod tests {
         let is_truncate: fn(&Action) -> bool = |s| matches!(s, Action::Truncate(_));
         let is_unlink: fn(&Action) -> bool = |s| matches!(s, Action::Unlink(_));
         let is_unlinkat: fn(&Action) -> bool = |s| matches!(s, Action::Unlinkat(_));
+        let is_utimes: fn(&Action) -> bool = |s| matches!(s, Action::Utimes(_));
+        let is_utimensat: fn(&Action) -> bool = |s| matches!(s, Action::Utimensat(_));
         let is_vfork: fn(&Action) -> bool = |s| matches!(s, Action::Vfork(_));
         let is_vmsplice: fn(&Action) -> bool = |s| matches!(s, Action::Vmsplice(_));
         let is_write: fn(&Action) -> bool = |s| matches!(s, Action::Write(_));
@@ -529,6 +540,10 @@ mod tests {
             ("fstat(1, 0x1) = -1 EBADF", is_fstat),
             ("fsync(3) = 0", is_fsync),
             ("ftruncate(3, 1024) = 0", is_ftruncate),
+            (
+                "futimesat(AT_FDCWD, \"/tmp/tfile\", NULL) = 0",
+                is_futimesat,
+            ),
             ("getcwd(\"/tmp\", 4096) = 4", is_getcwd),
             ("getdents(3, [], 4096) = 0", is_getdents),
             ("getdents64(3, [], 4096) = 0", is_getdents64),
@@ -624,6 +639,11 @@ mod tests {
             ("truncate(\"/tmp/file\", 1024) = 0", is_truncate),
             ("unlink(\"/f\") = 0", is_unlink),
             ("unlinkat(AT_FDCWD, \"/f\", 0) = 0", is_unlinkat),
+            ("utimes(\"/tmp/tfile\", NULL) = 0", is_utimes),
+            (
+                "utimensat(AT_FDCWD, \"/tmp/tfile\", NULL, 0) = 0",
+                is_utimensat,
+            ),
             ("vfork() = 123", is_vfork),
             (
                 "vmsplice(3, [{iov_base=\"data\", iov_len=4}], 1, 0) = 4",
@@ -689,6 +709,7 @@ mod tests {
             "fdatasync(3) = -1 EBADF",
             "ftruncate(3, 1024) = 0",
             "ftruncate(3, 1024) = -1 EINVAL",
+            "futimesat(AT_FDCWD, \"/tmp/tfile\", NULL) = 0",
             "open(\"/tmp/file\", O_WRONLY|O_CREAT|O_TRUNC, 0644) = 3",
             "pipe2([3, 4], O_CLOEXEC) = 0",
             "pread64(3, \"carb\", 4, 0) = 4",
@@ -724,6 +745,8 @@ mod tests {
             "fallocate(3, FALLOC_FL_KEEP_SIZE|FALLOC_FL_PUNCH_HOLE, -5, -6) = -1 EINVAL",
             "fallocate(3</tmp/file>, 0x200 /* FALLOC_FL_??? */, 0, 4096) = -1 EBADF",
             "unlinkat(AT_FDCWD, \"/f\", 0) = -1 ENOENT",
+            "utimes(\"/tmp/tfile\", NULL) = 0",
+            "utimensat(AT_FDCWD, \"/tmp/tfile\", NULL, 0) = 0",
             "symlinkat(\"t\", AT_FDCWD, \"l\") = -1 EEXIST",
             "truncate(\"/tmp/file\", 1024) = 0",
             "truncate(\"/tmp/file\", 0) = -1 EINVAL",

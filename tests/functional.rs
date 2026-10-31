@@ -34,6 +34,15 @@ fn python3_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Returns whether a C compiler is available in this environment.
+fn cc_available() -> bool {
+    Command::new("cc")
+        .arg("--version")
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
 /// Returns whether the temporary directory supports user extended attributes.
 fn xattr_available() -> bool {
     let path = std::env::temp_dir().join(format!("restrace-xattr-check-{}", std::process::id()));
@@ -847,6 +856,72 @@ async fn parses_utimensat() {
     assert!(lines.iter().any(|line| {
         matches!(&line.action, restrace::Action::Utimensat(utimensat) if utimensat.result.is_ok())
     }));
+}
+
+/// Compiles and runs a tiny C program that calls `utimes(2)` and
+/// `futimesat(2)` through `syscall(2)`, bypassing the C library wrappers that
+/// would otherwise turn them into `utimensat(2)`, and checks that both parse.
+///
+/// The test needs a C compiler on top of `strace`; it skips itself when either
+/// is missing.
+#[::tokio::test]
+async fn parses_utimes_and_futimesat() {
+    if !strace_available() || !cc_available() {
+        return;
+    }
+    let dir = std::env::temp_dir();
+    let stem = format!("restrace-times-{}", std::process::id());
+    let source = dir.join(format!("{stem}.c"));
+    let binary = dir.join(format!("{stem}.bin"));
+    let target = dir.join(format!("{stem}.txt"));
+    std::fs::write(
+        &source,
+        r#"#define _GNU_SOURCE
+#include <fcntl.h>
+#include <sys/time.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+
+int main(int argc, char **argv) {
+    int fd = open(argv[1], O_CREAT | O_RDWR, 0644);
+    if (fd < 0) return 1;
+    close(fd);
+#ifdef SYS_utimes
+    if (syscall(SYS_utimes, argv[1], (void *)0) != 0) return 2;
+#endif
+#ifdef SYS_futimesat
+    if (syscall(SYS_futimesat, (long)AT_FDCWD, argv[1], (void *)0) != 0) return 3;
+#endif
+    unlink(argv[1]);
+    return 0;
+}
+"#,
+    )
+    .expect("write the C source");
+    let status = Command::new("cc")
+        .args(["-o", binary.to_str().unwrap(), source.to_str().unwrap()])
+        .status()
+        .expect("run the C compiler");
+    assert!(status.success(), "compile the C source");
+    let mut cmd = Command::new(&binary);
+    cmd.arg(&target);
+    let lines = trace(cmd).await;
+    let _ = std::fs::remove_file(&source);
+    let _ = std::fs::remove_file(&binary);
+    let _ = std::fs::remove_file(&target);
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| matches!(line.action, restrace::Action::Utimes(_))),
+        "expected a parsed utimes(2): {lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| matches!(line.action, restrace::Action::Futimesat(_))),
+        "expected a parsed futimesat(2): {lines:?}"
+    );
 }
 
 /// Runs a Python one-liner whose `os.fsync` call makes the traced process
