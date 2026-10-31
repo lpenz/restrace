@@ -490,7 +490,15 @@ mod tests {
             ("dup3(0, 4, O_CLOEXEC) = 4", is_dup3),
             ("execve(\"/bin/echo\", [\"echo\"], []) = 0", is_execve),
             (
+                "execve(\"/bin/echo\", [\"echo\"], 0x7ffc38cbdec8 /* 63 vars */) = 0",
+                is_execve,
+            ),
+            (
                 "execveat(AT_FDCWD, \"prog\", [\"prog\"], [], 0) = 0",
+                is_execveat,
+            ),
+            (
+                "execveat(AT_FDCWD, \"prog\", [\"prog\"], 0x0 /* 0 vars */, 0) = 0",
                 is_execveat,
             ),
             ("+++ exited with 0 +++", is_exit),
@@ -709,6 +717,8 @@ mod tests {
             "mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f1234567000",
             "mmap(NULL, 0, PROT_NONE, MAP_FILE, 0, 0) = -1 EBADF",
             "execve(\"/bin/echo\", [\"echo\", \"hello\"], [\"PATH=/bin\"]) = 0",
+            "execve(\"/bin/echo\", [\"echo\"], 0x7ffc38cbdec8 /* 63 vars */) = 0",
+            "execveat(AT_FDCWD, \"prog\", [\"prog\"], 0x0 /* 0 vars */, 0) = 0",
             "faccessat2(AT_FDCWD, \"/f\", R_OK, AT_EACCESS) = 0",
             "fallocate(3, 0, 0, 4096) = 0",
             "fallocate(3, FALLOC_FL_KEEP_SIZE|FALLOC_FL_PUNCH_HOLE, -5, -6) = -1 EINVAL",

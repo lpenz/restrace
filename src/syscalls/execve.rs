@@ -6,43 +6,12 @@
 //!
 //! [`execve(2)`]: https://man7.org/linux/man-pages/man2/execve.2.html
 
+use super::envvars::{EnvVars, parse_str_array, write_str_array};
 use super::parse::{self, ParseError};
 use super::result::OkResult;
 use std::ffi::CString;
 use std::fmt;
 use std::str::FromStr;
-
-/// Writes a string array as strace does: `["first", "second"]`.
-pub(crate) fn write_str_array(f: &mut fmt::Formatter<'_>, values: &[CString]) -> fmt::Result {
-    f.write_str("[")?;
-    for (i, value) in values.iter().enumerate() {
-        if i != 0 {
-            f.write_str(", ")?;
-        }
-        write!(f, "{:?}", value.to_string_lossy())?;
-    }
-    f.write_str("]")
-}
-
-/// Parses a string array as [`write_str_array`] writes it: a bracket-delimited,
-/// comma-separated list of double-quoted strings.
-pub(crate) fn parse_str_array(input: &str, part: &'static str) -> Result<Vec<CString>, ParseError> {
-    let error = || ParseError::new(part, input);
-    let body = input
-        .trim()
-        .strip_prefix('[')
-        .and_then(|s| s.strip_suffix(']'))
-        .ok_or_else(error)?;
-    if body.trim().is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut values = Vec::new();
-    for item in parse::split_args(body) {
-        let value = parse::unquote(item.trim(), part)?;
-        values.push(CString::new(value).map_err(|_| error())?);
-    }
-    Ok(values)
-}
 
 /// Arguments and return value of the `execve(2)` system call.
 ///
@@ -56,7 +25,10 @@ pub struct Execve {
     /// The argument vector, the `argv` argument.
     pub argv: Vec<CString>,
     /// The environment, the `envp` argument.
-    pub envp: Vec<CString>,
+    ///
+    /// `strace` prints it in full with `-v`, and abbreviates it to
+    /// `0x... /* N vars */` otherwise.
+    pub envp: EnvVars,
     /// Return value: zero on success, or the errno of the failure.
     ///
     /// On success the calling process is replaced and execve does not return;
@@ -78,13 +50,13 @@ impl Execve {
     pub fn from_raw<P: AsRef<[u8]>>(
         pathname: P,
         argv: Vec<CString>,
-        envp: Vec<CString>,
+        envp: impl Into<EnvVars>,
         raw_result: i64,
     ) -> Self {
         Self {
             pathname: CString::new(pathname.as_ref()).expect("pathname contains NUL byte"),
             argv,
-            envp,
+            envp: envp.into(),
             result: OkResult::from_raw(raw_result),
         }
     }
@@ -95,7 +67,7 @@ impl fmt::Display for Execve {
         write!(f, "execve({:?}, ", self.pathname.to_string_lossy())?;
         write_str_array(f, &self.argv)?;
         f.write_str(", ")?;
-        write_str_array(f, &self.envp)?;
+        write!(f, "{}", self.envp)?;
         write!(f, ") = {}", self.result)
     }
 }
@@ -116,7 +88,7 @@ impl FromStr for Execve {
         }
         let pathname = parse::unquote(parts[0].trim(), "pathname")?;
         let argv = parse_str_array(parts[1], "argv")?;
-        let envp = parse_str_array(parts[2], "envp")?;
+        let envp = EnvVars::from_str(parts[2])?;
         Ok(Self {
             pathname: CString::new(pathname).map_err(|_| ParseError::new("pathname", parts[0]))?,
             argv,
@@ -174,6 +146,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_abbreviated_envp() {
+        let execve =
+            Execve::from_str("execve(\"/bin/echo\", [\"echo\"], 0x7ffc38cbdec8 /* 63 vars */) = 0")
+                .unwrap();
+        assert_eq!(
+            execve.envp,
+            EnvVars::Abbreviated {
+                address: 0x7ffc38cbdec8,
+                count: 63,
+            }
+        );
+        assert_eq!(execve.envp.full(), None);
+        assert_eq!(execve.argv, vec![c("echo")]);
+    }
+
+    #[test]
     fn parse_failure() {
         let execve =
             Execve::from_str("execve(\"/nonexistent\", [\"nonexistent\"], []) = -1 ENOENT")
@@ -200,6 +188,9 @@ mod tests {
             "execve(\"/nonexistent\", [\"arg\"], []) = -1 ENOENT",
             "execve(\"/bin/sh\", [\"sh\", \"-c\", \"echo , hi\"], []) = 0",
             "execve(\"/bin/echo\", [\"quote\\\"here\"], [\"A=B\", \"C=D\"]) = -1 EACCES",
+            "execve(\"/bin/echo\", [\"echo\"], 0x7ffc38cbdec8 /* 63 vars */) = 0",
+            "execve(\"/bin/true\", [], 0x0 /* 0 vars */) = 0",
+            "execve(\"/bin/true\", [\"true\"], NULL) = 0",
         ] {
             assert_eq!(Execve::from_str(line).unwrap().to_string(), line);
         }

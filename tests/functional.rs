@@ -103,6 +103,22 @@ where
     collected
 }
 
+/// Like [`trace`], but uses the provided `strace` options.
+async fn trace_with_options(cmd: Command, options: restrace::StraceOptions) -> Vec<Event> {
+    let mut lines = restrace::tokio::stream_with_options(
+        TokioCommand::from(cmd),
+        options,
+        [] as [&std::ffi::OsStr; 0],
+    )
+    .expect("spawn strace");
+    let mut collected = Vec::new();
+    while let Some(line) = lines.next().await {
+        collected.push(line);
+    }
+    lines.wait().await.expect("wait for strace");
+    collected
+}
+
 #[::tokio::test]
 async fn traces_a_single_process() {
     if !strace_available() {
@@ -1459,5 +1475,32 @@ async fn parses_generic_annotated_result() {
         annotated,
         Some(("fcntl", Some(10), "</dev/null>")),
         "expected the annotated fcntl result to be parsed: {lines:?}"
+    );
+}
+
+/// Checks that the abbreviated `envp` that `strace` prints when it does not
+/// decode the array is parsed, and that `StraceOptions::abbrev` reaches
+/// `strace` as `-e abbrev=execve`.
+#[::tokio::test]
+async fn parses_abbreviated_execve_envp() {
+    if !strace_available() {
+        return;
+    }
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", "true"]);
+    let options = restrace::StraceOptions::default().abbrev("execve");
+    let lines = trace_with_options(cmd, options).await;
+
+    let abbreviated = lines.iter().find_map(|line| {
+        if let restrace::Action::Execve(execve) = &line.action
+            && let restrace::syscalls::EnvVars::Abbreviated { count, .. } = &execve.envp
+        {
+            return Some(*count);
+        }
+        None
+    });
+    assert!(
+        abbreviated.is_some(),
+        "expected an abbreviated execve envp: {lines:?}"
     );
 }

@@ -7,7 +7,7 @@
 //! [`execveat(2)`]: https://man7.org/linux/man-pages/man2/execveat.2.html
 
 use super::dirfd::DirFd;
-use super::execve::{parse_str_array, write_str_array};
+use super::envvars::{EnvVars, parse_str_array, write_str_array};
 use super::parse::{self, ParseError};
 use super::result::OkResult;
 use std::ffi::CString;
@@ -163,7 +163,10 @@ pub struct Execveat {
     /// The argument vector, the `argv` argument.
     pub argv: Vec<CString>,
     /// The environment, the `envp` argument.
-    pub envp: Vec<CString>,
+    ///
+    /// `strace` prints it in full with `-v`, and abbreviates it to
+    /// `0x... /* N vars */` otherwise.
+    pub envp: EnvVars,
     /// Flags controlling `pathname` resolution.
     pub flags: ExecveatFlags,
     /// Return value: zero on success, or the errno of the failure.
@@ -188,7 +191,7 @@ impl Execveat {
         dirfd: DirFd,
         pathname: P,
         argv: Vec<CString>,
-        envp: Vec<CString>,
+        envp: impl Into<EnvVars>,
         flags: ExecveatFlags,
         raw_result: i64,
     ) -> Self {
@@ -196,7 +199,7 @@ impl Execveat {
             dirfd,
             pathname: CString::new(pathname.as_ref()).expect("pathname contains NUL byte"),
             argv,
-            envp,
+            envp: envp.into(),
             flags,
             result: OkResult::from_raw(raw_result),
         }
@@ -213,7 +216,7 @@ impl fmt::Display for Execveat {
         )?;
         write_str_array(f, &self.argv)?;
         f.write_str(", ")?;
-        write_str_array(f, &self.envp)?;
+        write!(f, "{}", self.envp)?;
         write!(f, ", {}) = {}", self.flags, self.result)
     }
 }
@@ -235,7 +238,7 @@ impl FromStr for Execveat {
         let dirfd = DirFd::from_str(parts[0].trim())?;
         let pathname = parse::unquote(parts[1].trim(), "pathname")?;
         let argv = parse_str_array(parts[2], "argv")?;
-        let envp = parse_str_array(parts[3], "envp")?;
+        let envp = EnvVars::from_str(parts[3])?;
         let flags = ExecveatFlags::from_str(parts[4].trim())?;
         Ok(Self {
             dirfd,
@@ -341,6 +344,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_abbreviated_envp() {
+        let execveat = Execveat::from_str(
+            "execveat(AT_FDCWD, \"prog\", [\"prog\"], 0x7ffc38cbdec8 /* 63 vars */, 0) = 0",
+        )
+        .unwrap();
+        assert_eq!(
+            execveat.envp,
+            EnvVars::Abbreviated {
+                address: 0x7ffc38cbdec8,
+                count: 63,
+            }
+        );
+        assert_eq!(execveat.envp.full(), None);
+    }
+
+    #[test]
     fn parse_failure() {
         let execveat =
             Execveat::from_str("execveat(AT_FDCWD, \"prog\", [], [], AT_EMPTY_PATH) = -1 EINVAL")
@@ -363,6 +382,8 @@ mod tests {
         for line in [
             "execveat(AT_FDCWD, \"prog\", [\"prog\"], [], 0) = 0",
             "execveat(AT_FDCWD, \"./prog\", [\"prog\", \"--help\"], [\"PATH=/bin\"], AT_EMPTY_PATH) = 0",
+            "execveat(AT_FDCWD, \"prog\", [\"prog\"], 0x7ffc38cbdec8 /* 63 vars */, 0) = 0",
+            "execveat(AT_FDCWD, \"prog\", [\"prog\"], NULL, 0) = 0",
             "execveat(3, \"a, b\", [], [], AT_SYMLINK_NOFOLLOW) = -1 ENOENT",
             "execveat(AT_FDCWD, \"prog\", [\"x \\\" y\"], [], AT_EMPTY_PATH) = -1 EACCES",
         ] {

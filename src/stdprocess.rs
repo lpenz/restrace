@@ -52,6 +52,8 @@ pub struct StraceOptions {
     pub strings: usize,
     /// An optional `-e trace=` filter.
     pub trace_filter: Option<OsString>,
+    /// An optional `-e abbrev=` filter.
+    pub abbrev: Option<OsString>,
     /// When true, pass `--follow-forks`.
     pub follow_forks: bool,
     /// The format passed to `--absolute-timestamps`.
@@ -68,6 +70,7 @@ impl Default for StraceOptions {
             verbose: true,
             strings: 1048576,
             trace_filter: None,
+            abbrev: None,
             follow_forks: true,
             timestamps: OsString::from("format:unix,precision:us"),
             decode_fds: true,
@@ -101,6 +104,13 @@ impl StraceOptions {
     #[must_use]
     pub fn trace_filter<S: Into<OsString>>(mut self, filter: S) -> Self {
         self.trace_filter = Some(filter.into());
+        self
+    }
+
+    /// Sets the `-e abbrev=` filter.
+    #[must_use]
+    pub fn abbrev<S: Into<OsString>>(mut self, abbrev: S) -> Self {
+        self.abbrev = Some(abbrev.into());
         self
     }
 
@@ -155,6 +165,12 @@ pub(crate) fn strace_args_for_options_internal(opts: &StraceOptions) -> Vec<OsSt
     if let Some(filter) = &opts.trace_filter {
         let mut combined = OsString::from("trace=");
         combined.push(filter);
+        args.push(OsString::from("-e"));
+        args.push(combined);
+    }
+    if let Some(abbrev) = &opts.abbrev {
+        let mut combined = OsString::from("abbrev=");
+        combined.push(abbrev);
         args.push(OsString::from("-e"));
         args.push(combined);
     }
@@ -448,6 +464,30 @@ mod tests {
     fn no_args() {
         let wrapped = under_strace(Command::new("true"));
         assert_eq!(wrapped.get_args().collect::<Vec<_>>().len(), 9);
+    }
+
+    #[test]
+    fn abbrev_injected() {
+        let args = strace_args_for_options(&StraceOptions::default().abbrev("execve"));
+        let args: Vec<String> = args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        let pos = args
+            .iter()
+            .position(|arg| arg == "-e")
+            .expect("abbrev flag");
+        assert_eq!(args[pos + 1], "abbrev=execve");
+    }
+
+    #[test]
+    fn abbrev_absent_by_default() {
+        let args = strace_args_for_options(&StraceOptions::default());
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.to_string_lossy().starts_with("abbrev="))
+        );
     }
 
     #[test]

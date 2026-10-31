@@ -138,6 +138,9 @@ same way the existing records do:
 - `OkResult` (`result.rs`): a generic success-or-errno return value.
 - `Uid` (`uid.rs`): a user or group ID argument as `strace` prints it, where
   `-1` leaves the owner or group unchanged.
+- `EnvVars` (`envvars.rs`): the `envp` argument of `execve(2)` and
+  `execveat(2)`, which parses both the full array and the abbreviated
+  `0x... /* N vars */` form.
 - `FdResult` (`fd.rs`), `Errno` (`errno.rs`), `Mode`/`FileMode`/`AccessMode`,
   `Device`, `DirFd` and the various flag types.
 - Helpers in `parse.rs`: `split_args` and `split_args_nested` (ignores
@@ -145,8 +148,8 @@ same way the existing records do:
   (removes the parenthesized errno text) and `strip_comment`.
 
 Note that `strace` truncates decoded strings longer than its string limit
-(default 32 bytes) and appends `...`; this crate does not parse that marker
-yet, so keep functional-test buffers short.
+(default 32 bytes) and appends `...`; the parsers drop the marker, but the
+value is incomplete, so keep functional-test buffers short.
 
 ### 6. Update the `LenResult` doc list
 
