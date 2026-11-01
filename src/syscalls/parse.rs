@@ -65,8 +65,9 @@ pub(crate) fn split_args(input: &str) -> Vec<&str> {
     parts
 }
 
-/// Like [`split_args`], but also ignores commas inside `[ ... ]` groups,
-/// such as the string arrays of `execve(2)`.
+/// Like [`split_args`], but also ignores commas inside bracketed groups:
+/// `[ ... ]`, `{ ... }` and `( ... )`. This covers the string arrays of
+/// `execve(2)`, the structures of `clone3(2)` and calls like `makedev(a, b)`.
 pub(crate) fn split_args_nested(input: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut start = 0;
@@ -81,8 +82,8 @@ pub(crate) fn split_args_nested(input: &str) -> Vec<&str> {
         match c {
             '\\' if quoted => escaped = true,
             '"' => quoted = !quoted,
-            '[' if !quoted => depth += 1,
-            ']' if !quoted => depth = depth.saturating_sub(1),
+            '[' | '{' | '(' if !quoted => depth += 1,
+            ']' | '}' | ')' if !quoted => depth = depth.saturating_sub(1),
             ',' if !quoted && depth == 0 => {
                 parts.push(&input[start..i]);
                 start = i + 1;
@@ -175,6 +176,15 @@ pub(crate) fn strip_description(input: &str) -> &str {
     }
 }
 
+/// Removes a trailing comment `strace` appends in some forms, such as
+/// the ` /* date */` in timestamps.
+pub(crate) fn strip_comment(input: &str) -> &str {
+    match input.find(" /*") {
+        Some(i) => input[..i].trim_end(),
+        None => input,
+    }
+}
+
 /// Splits the `<...>` associated-info annotation that `strace` appends with
 /// `-y` from an argument, returning the bare argument and the annotated text
 /// inside the angle brackets, if any.
@@ -243,6 +253,18 @@ mod tests {
     }
 
     #[test]
+    fn split_nested_structures_and_calls() {
+        assert_eq!(
+            split_args_nested("\"f\", {st_dev=makedev(0, 0x1e), st_size=8}"),
+            ["\"f\"", " {st_dev=makedev(0, 0x1e), st_size=8}"]
+        );
+        assert_eq!(
+            split_args_nested("{d_ino=1, d_name=\"a, b\"}"),
+            ["{d_ino=1, d_name=\"a, b\"}"]
+        );
+    }
+
+    #[test]
     fn unquote_plain() {
         assert_eq!(unquote("\"/tmp/file\"", "pathname").unwrap(), "/tmp/file");
     }
@@ -303,6 +325,21 @@ mod tests {
         assert_eq!(strip_description("ENOENT"), "ENOENT");
         assert_eq!(strip_description("5"), "5");
         assert_eq!(strip_description(""), "");
+    }
+
+    #[test]
+    fn strip_comment_removes_suffix() {
+        assert_eq!(
+            strip_comment("1754766014 /* 2025-08-09T20:00:14.986788270+0100 */"),
+            "1754766014"
+        );
+        assert_eq!(strip_comment("986788270 /* ... */"), "986788270");
+    }
+
+    #[test]
+    fn strip_comment_keeps_plain() {
+        assert_eq!(strip_comment("1754766014"), "1754766014");
+        assert_eq!(strip_comment(""), "");
     }
 
     #[test]

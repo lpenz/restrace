@@ -21,6 +21,7 @@ mod execve;
 mod execveat;
 mod fchdir;
 mod fd;
+mod flags;
 mod fork;
 mod generic;
 mod mkdir;

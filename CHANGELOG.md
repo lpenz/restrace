@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   padded away from the closing parenthesis.
 - Parse a failing call whose errno carries the parenthesized description
   `strace` appends, such as `= -1 ENOENT (No such file or directory)`.
+- Split call arguments on commas only at the top level of `[...]`, `{...}` and
+  `(...)` groups, so a generic call that carries a structure or a nested call,
+  such as `stat(2)`'s buffer or a `makedev(0, 0x1e)`, parses.
+- Ignore the `/* ... */` comment `strace` appends to a flag value with no
+  known name, such as `0x2000 /* AT_??? */`, and print the same comment for
+  unnamed bits so the value round-trips.
 - Recognize the full set of `errno` names that `strace` prints, instead of a
   small subset. Failure results using an unlisted name, such as `EFAULT` or
   `EXDEV`, previously failed to parse and caused the whole call to be dropped.
