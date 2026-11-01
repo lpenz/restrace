@@ -18,6 +18,9 @@
 //!   that terminated the process.
 //! - [`syscalls`]: typed records for the supported system calls, plus a
 //!   [`syscalls::Generic`] fallback for calls without a dedicated type.
+//! - [`Reconstructor`]: joins the two lines of a call that `strace` split
+//!   across an `<unfinished ...>` / `<... resumed>` pair, for traces read from
+//!   a file or any other [`std::io::BufRead`].
 //! - [`stdprocess`]: run a [`std::process::Command`] under `strace` and get a
 //!   blocking iterator of [`Event`]s with [`stdprocess::stream`].
 //! - [`tokio`]: the same for a `tokio::process::Command`, as an async stream
@@ -57,7 +60,8 @@
 //! `<... name resumed>`. [`stdprocess::stream`] and [`tokio::stream`] join
 //! the two lines of every pid into the single [`Event`] the call would
 //! otherwise produce, keeping the pid and the timestamp of the unfinished
-//! line.
+//! line. A trace read from a file can be reconstructed the same way with
+//! [`Reconstructor`].
 //!
 //! Reconstructed events keep the timestamp of the unfinished line, so they
 //! are not necessarily ordered by time: a call that started early can be
@@ -65,6 +69,29 @@
 //! text is not decodable, such as one that resumes with the indeterminate
 //! result `= ?`, is dropped, as it would be if `strace` had printed it on one
 //! line.
+//!
+//! # Parsing a trace file
+//!
+//! A trace that `strace` wrote to a file with `-o FILE` can be parsed without
+//! going through the streaming APIs. Feed the lines to a [`Reconstructor`] in
+//! the order `strace` wrote them:
+//!
+//! ```rust,no_run
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use restrace::Reconstructor;
+//! use std::fs::File;
+//! use std::io::{BufRead, BufReader};
+//!
+//! let file = File::open("trace.log")?;
+//! let mut reconstructor = Reconstructor::new();
+//! for line in BufReader::new(file).lines() {
+//!     let line = line?;
+//!     if let Some(event) = reconstructor.push(&line) {
+//!         println!("{event}");
+//!     }
+//! }
+//! # Ok(()) }
+//! ```
 //!
 //! # Running a command under `strace`
 //!
@@ -121,6 +148,7 @@ pub mod tokio;
 pub use action::Action;
 pub use event::Event;
 pub use exit::Exit;
+pub use reconstruct::Reconstructor;
 pub use stdprocess::{
     StraceOptions, stream, stream_with, stream_with_options, under_strace, under_strace_with,
     under_strace_with_options,
