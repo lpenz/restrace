@@ -14,7 +14,7 @@
 
 use crate::Event;
 use crate::reconstruct::Reconstructor;
-use crate::stdprocess::TRACE_FD;
+use crate::stdprocess::{StraceOptions, TRACE_FD};
 use ::tokio::fs::File as TokioFile;
 use ::tokio::io::{AsyncBufReadExt, BufReader, Lines};
 use ::tokio::process::{Child, Command};
@@ -39,7 +39,7 @@ use std::task::{Context, Poll};
 /// ready-made command that does so.
 #[must_use]
 pub fn under_strace(cmd: Command) -> Command {
-    under_strace_with(cmd, [] as [&OsStr; 0])
+    crate::stdprocess::under_strace_with_options(cmd.into_std(), StraceOptions::default()).into()
 }
 
 /// Like [`under_strace`], but inserts `extra` `strace` arguments between the
@@ -55,6 +55,12 @@ where
     S: AsRef<OsStr>,
 {
     crate::stdprocess::under_strace_with(cmd.into_std(), extra).into()
+}
+
+/// Like [`under_strace`], but uses the provided [`StraceOptions`].
+#[must_use]
+pub fn under_strace_with_options(cmd: Command, options: StraceOptions) -> Command {
+    crate::stdprocess::under_strace_with_options(cmd.into_std(), options).into()
 }
 
 /// A stream of [`Event`]s read from a command running under `strace`.
@@ -119,7 +125,7 @@ impl Stream for EventStream {
 /// Returns an error if the trace pipe cannot be created or `strace` cannot be
 /// spawned.
 pub fn stream(cmd: Command) -> ::std::io::Result<EventStream> {
-    stream_with(cmd, [] as [&OsStr; 0])
+    stream_with_options(cmd, StraceOptions::default(), [] as [&OsStr; 0])
 }
 
 /// Like [`stream`], but inserts `extra` `strace` arguments between the base
@@ -138,6 +144,20 @@ pub fn stream(cmd: Command) -> ::std::io::Result<EventStream> {
 /// Returns an error if the trace pipe cannot be created or `strace` cannot be
 /// spawned.
 pub fn stream_with<I, S>(cmd: Command, extra: I) -> ::std::io::Result<EventStream>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    stream_with_options(cmd, StraceOptions::default(), extra)
+}
+
+/// Like [`stream`], but uses the provided [`StraceOptions`] and inserts
+/// `extra` `strace` arguments after those options.
+pub fn stream_with_options<I, S>(
+    cmd: Command,
+    options: StraceOptions,
+    extra: I,
+) -> ::std::io::Result<EventStream>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -168,7 +188,27 @@ where
         .collect();
     args.push("-o".into());
     args.push(trace_path.into());
-    let mut wrapped: Command = crate::stdprocess::under_strace_with(cmd.into_std(), args).into();
+    let mut wrapped: Command = {
+        let std_cmd = cmd.into_std();
+        let mut w = ::std::process::Command::new("strace");
+        for arg in crate::stdprocess::strace_args_for_options_internal(&options) {
+            w.arg(arg);
+        }
+        w.args(args);
+        w.arg(std_cmd.get_program());
+        w.args(std_cmd.get_args());
+        if let Some(dir) = std_cmd.get_current_dir() {
+            w.current_dir(dir);
+        }
+        for (key, value) in std_cmd.get_envs() {
+            if let Some(value) = value {
+                w.env(key, value);
+            } else {
+                w.env_remove(key);
+            }
+        }
+        w.into()
+    };
     unsafe {
         wrapped.pre_exec(move || {
             // Give strace its own descriptor for the trace output. If it was

@@ -121,4 +121,15 @@ pub mod tokio;
 pub use action::Action;
 pub use event::Event;
 pub use exit::Exit;
+pub use stdprocess::{
+    StraceOptions, stream, stream_with, stream_with_options, under_strace, under_strace_with,
+    under_strace_with_options,
+};
 pub use syscalls::ParseError;
+#[cfg(feature = "tokio")]
+pub use tokio::{
+    stream as tokio_stream, stream_with as tokio_stream_with,
+    stream_with_options as tokio_stream_with_options, under_strace as tokio_under_strace,
+    under_strace_with as tokio_under_strace_with,
+    under_strace_with_options as tokio_under_strace_with_options,
+};
