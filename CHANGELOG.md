@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `tokio::under_strace_with`, to run a command under `strace` with extra
   `strace` arguments while still reading and parsing the trace from a dedicated
   pipe.
+- A new `Fd` argument type that carries the path `strace` resolves for a file
+  descriptor when run with `-y`, such as the `3</tmp/file>` of
+  `close(3</tmp/file>)`. The `close(2)` and `fchdir(2)` descriptor arguments
+  and the `Fd` of `FdResult` now use it, and `DirFd` gained the same optional
+  path so the `*at` records round-trip `AT_FDCWD</cwd>` and `4</dir>`.
+
+### Changed
+
+- `strace` now always runs with `-y`, so file descriptors and the current
+  working directory are annotated with their resolved paths.
 
 ### Fixed
 

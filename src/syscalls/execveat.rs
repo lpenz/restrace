@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn display_zero_flags() {
         let execveat = Execveat::from_raw(
-            DirFd(3),
+            DirFd::new(3),
             "prog",
             vec![c("prog")],
             vec![],

@@ -62,6 +62,23 @@ async fn trace_shell(script: &str) -> Vec<Event> {
     trace(cmd).await
 }
 
+/// Like [`trace`], but inserts `extra` `strace` arguments between the base
+/// flags and the traced program.
+async fn trace_with<I, S>(cmd: Command, extra: I) -> Vec<Event>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut lines =
+        restrace::tokio::stream_with(TokioCommand::from(cmd), extra).expect("spawn strace");
+    let mut collected = Vec::new();
+    while let Some(line) = lines.next().await {
+        collected.push(line);
+    }
+    lines.wait().await.expect("wait for strace");
+    collected
+}
+
 #[::tokio::test]
 async fn traces_a_single_process() {
     if !strace_available() {
@@ -243,6 +260,37 @@ async fn stream_reconstructs_split_calls() {
         "expected the stream to reconstruct the split calls: \
          {} events vs {single_line} single-line calls",
         events.len()
+    );
+}
+
+/// Checks that `strace -y` annotations are parsed when present. A `cat(1)`
+/// reading from `/dev/null` produces an `openat` whose result carries the
+/// resolved path, which the parser must round-trip.
+#[::tokio::test]
+async fn parses_y_annotated_fd() {
+    if !strace_available() {
+        return;
+    }
+    let mut cmd = Command::new("cat");
+    cmd.arg("/dev/null");
+    let lines = trace_with(cmd, ["-e", "trace=openat"]).await;
+
+    let has_annotated_openat = lines.iter().any(|line| {
+        if let restrace::Action::Openat(openat) = &line.action {
+            if let restrace::syscalls::FdResult::Fd(fd) = &openat.result {
+                fd.path()
+                    .and_then(|p| p.to_str().ok())
+                    .is_some_and(|p| p.starts_with("/dev/null"))
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    });
+    assert!(
+        has_annotated_openat,
+        "expected an annotated openat result: {lines:?}"
     );
 }
 

@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn display_dirfd_and_mode() {
         let openat = Openat::from_raw(
-            DirFd(4),
+            DirFd::new(4),
             "file",
             OpenFlags::O_WRONLY | OpenFlags::O_CREAT | OpenFlags::O_TRUNC,
             Some(Mode(0o600)),
@@ -159,7 +159,7 @@ mod tests {
     fn parse_failure() {
         let openat =
             Openat::from_str("openat(4, \"f\", O_WRONLY|O_CREAT, 0600) = -1 EACCES").unwrap();
-        assert_eq!(openat.dirfd, DirFd(4));
+        assert_eq!(openat.dirfd, DirFd::new(4));
         assert_eq!(openat.mode, Some(Mode(0o600)));
         assert_eq!(openat.result, FdResult::Errno(Errno::EACCES));
         assert_eq!(openat.pathname.to_str().unwrap(), "f");
@@ -176,6 +176,23 @@ mod tests {
     }
 
     #[test]
+    fn parse_annotated() {
+        let openat = Openat::from_str(
+            "openat(AT_FDCWD</home/user>, \"file\", O_RDONLY) = 3</home/user/file>",
+        )
+        .unwrap();
+        assert_eq!(
+            openat.dirfd.path().map(|p| p.to_str().unwrap()),
+            Some("/home/user")
+        );
+        assert_eq!(openat.result.fd(), Some(3));
+        assert_eq!(
+            openat.to_string(),
+            "openat(AT_FDCWD</home/user>, \"file\", O_RDONLY) = 3</home/user/file>"
+        );
+    }
+
+    #[test]
     fn round_trip() {
         for line in [
             "openat(AT_FDCWD, \"/tmp/file\", O_RDONLY) = 3",
@@ -183,6 +200,7 @@ mod tests {
             "openat(AT_FDCWD, \"relative/x\", O_RDONLY|O_DIRECTORY) = -1 ENOTDIR",
             "openat(0, \"a, b\", O_RDONLY|O_PATH) = -1 EBADF",
             "openat(AT_FDCWD, \"/tmp\", O_RDONLY|0x1000000) = -1 9999",
+            "openat(AT_FDCWD</home/user>, \"file\", O_RDONLY) = 3</home/user/file>",
         ] {
             assert_eq!(Openat::from_str(line).unwrap().to_string(), line);
         }

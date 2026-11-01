@@ -46,7 +46,7 @@ pub use errno::Errno;
 pub use execve::Execve;
 pub use execveat::{Execveat, ExecveatFlags};
 pub use fchdir::Fchdir;
-pub use fd::FdResult;
+pub use fd::{Fd, FdResult};
 pub use fork::{Fork, ForkResult};
 pub use generic::{Arg, Generic, Ret};
 pub use mkdir::Mkdir;
