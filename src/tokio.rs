@@ -369,9 +369,9 @@ mod tests {
         assert!(!collected.is_empty());
         assert!(
             collected.iter().all(|line| matches!(
-                line.action,
-                crate::Action::Openat(_) | crate::Action::Exit(_)
-            )),
+                &line.action,
+                crate::Action::Generic(generic) if generic.name == "openat"
+            ) || matches!(line.action, crate::Action::Exit(_))),
             "unexpected syscall with -e trace=openat: {collected:?}"
         );
     }

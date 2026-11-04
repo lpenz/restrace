@@ -88,22 +88,6 @@ where
     collected
 }
 
-/// Like [`trace`], but uses the provided `strace` options.
-async fn trace_with_options(cmd: Command, options: restrace::StraceOptions) -> Vec<Event> {
-    let mut lines = restrace::tokio::stream_with_options(
-        TokioCommand::from(cmd),
-        options,
-        [] as [&std::ffi::OsStr; 0],
-    )
-    .expect("spawn strace");
-    let mut collected = Vec::new();
-    while let Some(line) = lines.next().await {
-        collected.push(line.expect("read trace"));
-    }
-    lines.wait().await.expect("wait for strace");
-    collected
-}
-
 #[::tokio::test]
 async fn traces_a_single_process() {
     if !strace_available() {
@@ -115,10 +99,11 @@ async fn traces_a_single_process() {
 
     assert!(!lines.is_empty(), "expected some parsed syscalls");
     assert!(
-        lines
-            .iter()
-            .any(|line| matches!(line.action, restrace::Action::Openat(_))),
-        "expected a dedicated syscall type to be parsed: {lines:?}"
+        lines.iter().any(|line| matches!(
+            &line.action,
+            restrace::Action::Generic(generic) if generic.name == "openat"
+        )),
+        "expected an openat syscall to be parsed: {lines:?}"
     );
     // strace reports the end of the process as an exit event.
     assert!(
@@ -154,12 +139,12 @@ async fn parses_described_and_short_syscalls() {
     )
     .await;
 
-    // `close(2)` is a short call; it must parse as a typed Close and not fall
-    // back to Generic.
+    // `close(2)` is a short call; it must parse as a Generic call.
     assert!(
-        lines
-            .iter()
-            .any(|line| matches!(line.action, restrace::Action::Close(_))),
+        lines.iter().any(|line| matches!(
+            &line.action,
+            restrace::Action::Generic(generic) if generic.name == "close"
+        )),
         "expected a parsed close(2): {lines:?}"
     );
 }
@@ -301,14 +286,12 @@ async fn parses_y_annotated_fd() {
     let lines = trace_with(cmd, ["-e", "trace=openat"]).await;
 
     let has_annotated_openat = lines.iter().any(|line| {
-        if let restrace::Action::Openat(openat) = &line.action {
-            if let restrace::syscalls::FdResult::Fd(fd) = &openat.result {
-                fd.path()
-                    .and_then(|p| p.to_str().ok())
-                    .is_some_and(|p| p.starts_with("/dev/null"))
-            } else {
-                false
-            }
+        if let restrace::Action::Generic(generic) = &line.action {
+            generic.name == "openat"
+                && generic
+                    .result
+                    .annotation()
+                    .is_some_and(|annotation| annotation.starts_with("</dev/null"))
         } else {
             false
         }

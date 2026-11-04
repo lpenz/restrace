@@ -14,8 +14,8 @@ It is easier to explain the crate in terms of the types it provides:
   pid, the timestamp and an [`Action`].
 - [`Action`]: what the line reports: a system call record or the [`Exit`]
   that terminated the process.
-- [`syscalls`]: typed records for the supported system calls, plus a
-  [`syscalls::Generic`] fallback for calls without a dedicated type.
+- [`syscalls`]: the generic system call record, [`syscalls::Generic`],
+  which keeps the raw arguments and return value.
 - [`stdprocess`]: run a [`std::process::Command`] under `strace` and get a
   blocking iterator of [`Event`]s with [`stdprocess::stream`].
 - [`tokio`]: the same for a `tokio::process::Command`, as an async stream
@@ -42,9 +42,8 @@ let line: Event = "251751 1700000000.000000 execve(\"/bin/echo\", \
 assert_eq!(line.pid, 251751);
 ```
 
-Every supported call parses into its own type inside [`syscalls`]; calls
-without a dedicated type fall back to [`syscalls::Generic`], which keeps
-the raw arguments and return value. The `+++ exited with ... +++` and
+Every system call parses into [`syscalls::Generic`], which keeps the raw
+arguments and return value. The `+++ exited with ... +++` and
 `+++ killed by ... +++` lines that report the end of a traced process
 parse into [`Exit`], carried as [`Action::Exit`].
 

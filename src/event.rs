@@ -177,7 +177,7 @@ mod tests {
             Event::from_str("[pid  1234] 1699999999.123456 open(\"/tmp\", O_RDONLY) = 3").unwrap();
         assert_eq!(line.pid, 1234);
         assert_eq!(line.time, epoch(1_699_999_999, 123_456));
-        assert!(matches!(line.action, Action::Open(_)));
+        assert!(matches!(line.action, Action::Generic(_)));
     }
 
     #[test]
@@ -194,14 +194,14 @@ mod tests {
                 .unwrap();
         assert_eq!(line.pid, 251751);
         assert_eq!(line.time, epoch(1_700_000_000, 0));
-        assert!(matches!(line.action, Action::Execve(_)));
+        assert!(matches!(line.action, Action::Generic(_)));
     }
 
     #[test]
     fn parse_bare_pid_padded() {
         let line = Event::from_str("123  1700000000.000000 close(0) = 0").unwrap();
         assert_eq!(line.pid, 123);
-        assert!(matches!(line.action, Action::Close(_)));
+        assert!(matches!(line.action, Action::Generic(_)));
     }
 
     #[test]

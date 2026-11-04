@@ -40,32 +40,7 @@ impl fmt::Display for ParseError {
 
 impl Error for ParseError {}
 
-/// Splits a comma-separated argument list, ignoring commas inside quotes.
-pub(crate) fn split_args(input: &str) -> Vec<&str> {
-    let mut parts = Vec::new();
-    let mut start = 0;
-    let mut quoted = false;
-    let mut escaped = false;
-    for (i, c) in input.char_indices() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        match c {
-            '\\' if quoted => escaped = true,
-            '"' => quoted = !quoted,
-            ',' if !quoted => {
-                parts.push(&input[start..i]);
-                start = i + 1;
-            }
-            _ => {}
-        }
-    }
-    parts.push(&input[start..]);
-    parts
-}
-
-/// Like [`split_args`], but also ignores commas inside bracketed groups:
+/// Like [`split_args_nested`], but also ignores commas inside bracketed groups:
 /// `[ ... ]`, `{ ... }` and `( ... )`. This covers the string arrays of
 /// `execve(2)`, the structures of `clone3(2)` and calls like `makedev(a, b)`.
 pub(crate) fn split_args_nested(input: &str) -> Vec<&str> {
@@ -176,47 +151,6 @@ pub(crate) fn strip_description(input: &str) -> &str {
     }
 }
 
-/// Removes a trailing comment `strace` appends in some forms, such as
-/// the ` /* date */` in timestamps.
-pub(crate) fn strip_comment(input: &str) -> &str {
-    match input.find(" /*") {
-        Some(i) => input[..i].trim_end(),
-        None => input,
-    }
-}
-
-/// Splits the `<...>` associated-info annotation that `strace` appends with
-/// `-y` from an argument, returning the bare argument and the annotated text
-/// inside the angle brackets, if any.
-///
-/// `strace` formats an annotated file descriptor as `3</path/to/file>` and,
-/// with `-yy`, may nest more associated info inside the brackets, such as the
-/// device of a character file (`3</dev/null<char 1:3>>`). A marker that
-/// `strace` appends after the closing bracket, such as the `(deleted)` of a
-/// removed file, is dropped.
-pub(crate) fn split_annotation(input: &str) -> (&str, Option<&str>) {
-    let input = input.trim();
-    let Some(open) = input.find('<') else {
-        return (input, None);
-    };
-    let value = input[..open].trim_end();
-    let rest = &input[open + 1..];
-    let mut depth = 1u32;
-    for (i, c) in rest.char_indices() {
-        match c {
-            '<' => depth += 1,
-            '>' => {
-                depth -= 1;
-                if depth == 0 {
-                    return (value, Some(&rest[..i]));
-                }
-            }
-            _ => {}
-        }
-    }
-    (input, None)
-}
-
 /// Like [`split_annotation`], but keeps the annotation verbatim: the returned
 /// suffix starts at the opening `<` and runs to the end of the input, so it
 /// includes any marker `strace` appends after the closing bracket, such as the
@@ -249,21 +183,6 @@ pub(crate) fn split_annotation_verbatim(input: &str) -> (&str, Option<&str>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn split_plain() {
-        assert_eq!(split_args("a, b, c"), ["a", " b", " c"]);
-    }
-
-    #[test]
-    fn split_quoted_comma() {
-        assert_eq!(split_args("\"a, b\", O_RDONLY"), ["\"a, b\"", " O_RDONLY"]);
-    }
-
-    #[test]
-    fn split_quoted_escaped_quote() {
-        assert_eq!(split_args("\"a\\\",b\", c"), ["\"a\\\",b\"", " c"]);
-    }
 
     #[test]
     fn split_nested_arrays() {
@@ -354,57 +273,6 @@ mod tests {
         assert_eq!(strip_description("ENOENT"), "ENOENT");
         assert_eq!(strip_description("5"), "5");
         assert_eq!(strip_description(""), "");
-    }
-
-    #[test]
-    fn strip_comment_removes_suffix() {
-        assert_eq!(
-            strip_comment("1754766014 /* 2025-08-09T20:00:14.986788270+0100 */"),
-            "1754766014"
-        );
-        assert_eq!(strip_comment("986788270 /* ... */"), "986788270");
-    }
-
-    #[test]
-    fn strip_comment_keeps_plain() {
-        assert_eq!(strip_comment("1754766014"), "1754766014");
-        assert_eq!(strip_comment(""), "");
-    }
-
-    #[test]
-    fn split_annotation_plain() {
-        assert_eq!(split_annotation("3"), ("3", None));
-        assert_eq!(split_annotation("AT_FDCWD"), ("AT_FDCWD", None));
-    }
-
-    #[test]
-    fn split_annotation_path() {
-        assert_eq!(split_annotation("3</tmp/file>"), ("3", Some("/tmp/file")));
-        assert_eq!(
-            split_annotation("AT_FDCWD</home/user>"),
-            ("AT_FDCWD", Some("/home/user"))
-        );
-    }
-
-    #[test]
-    fn split_annotation_nested_and_suffix() {
-        assert_eq!(
-            split_annotation("3</dev/null<char 1:3>>"),
-            ("3", Some("/dev/null<char 1:3>"))
-        );
-        assert_eq!(
-            split_annotation("3</tmp/gone>(deleted)"),
-            ("3", Some("/tmp/gone"))
-        );
-        assert_eq!(split_annotation("3<pipe:[123]>"), ("3", Some("pipe:[123]")));
-    }
-
-    #[test]
-    fn split_annotation_malformed() {
-        assert_eq!(
-            split_annotation("3</tmp/unclosed"),
-            ("3</tmp/unclosed", None)
-        );
     }
 
     #[test]

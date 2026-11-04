@@ -157,7 +157,7 @@ mod tests {
             .unwrap();
         assert_eq!(event.pid, 394527);
         assert_eq!(event.time, epoch(1_700_000_000, 0));
-        assert!(matches!(event.action, Action::Close(_)));
+        assert!(matches!(event.action, Action::Generic(_)));
     }
 
     #[test]
@@ -177,7 +177,7 @@ mod tests {
             .collect();
         assert_eq!(events.len(), 3);
         assert_eq!(events[0].pid, 2);
-        assert!(matches!(events[0].action, Action::Close(_)));
+        assert!(matches!(events[0].action, Action::Generic(_)));
         assert_eq!(events[1].pid, 1);
         assert_eq!(events[1].action.to_string(), "mystery(0x1, 0x2) = 0");
         assert!(matches!(events[2].action, Action::Exit(_)));
@@ -212,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn dedicated_type_is_reconstructed() {
+    fn generic_call_is_reconstructed() {
         let mut reconstructor = Reconstructor::new();
         assert!(
             reconstructor
@@ -222,7 +222,7 @@ mod tests {
         let event = reconstructor
             .push("1 1700000000.000100 <... openat resumed>) = 3")
             .unwrap();
-        assert!(matches!(event.action, Action::Openat(_)));
+        assert!(matches!(event.action, Action::Generic(_)));
         assert_eq!(
             event.action.to_string(),
             "openat(AT_FDCWD, \"/tmp\", O_RDONLY) = 3"
@@ -242,13 +242,13 @@ mod tests {
             .push("2 1700000000.000002 close(0) = 0")
             .unwrap();
         assert_eq!(other.pid, 2);
-        assert!(matches!(other.action, Action::Close(_)));
+        assert!(matches!(other.action, Action::Generic(_)));
         // The first pid resumes and is joined with its own unfinished line.
         let event = reconstructor
             .push("1 1700000000.000003 <... openat resumed>) = 3")
             .unwrap();
         assert_eq!(event.pid, 1);
-        assert!(matches!(event.action, Action::Openat(_)));
+        assert!(matches!(event.action, Action::Generic(_)));
         assert_eq!(event.time, epoch(1_700_000_000, 1));
     }
 

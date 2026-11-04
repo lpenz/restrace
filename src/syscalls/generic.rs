@@ -92,6 +92,11 @@ impl FromStr for Arg {
             }
             return Ok(Self::Array(values));
         }
+        // Keep a leading zero, as in the `0644` mode `strace` prints, so the
+        // value round-trips instead of losing it to a decimal parse.
+        if s.len() > 1 && s.starts_with('0') && s.chars().all(|c| c.is_ascii_digit()) {
+            return Ok(Self::Raw(s.to_string()));
+        }
         if let Ok(v) = s.parse::<u64>() {
             return Ok(Self::Unsigned(v));
         }
@@ -329,6 +334,7 @@ mod tests {
             ]))
         );
         assert_eq!(Arg::from_str("[]"), Ok(Arg::Array(Vec::new())));
+        assert_eq!(Arg::from_str("0644").unwrap(), Arg::Raw("0644".to_string()));
         assert_eq!(Arg::from_str("").unwrap(), Arg::Raw("".to_string()));
         assert_eq!(Arg::from_str("0xzz").unwrap(), Arg::Raw("0xzz".to_string()));
         assert_eq!(Arg::from_str("null").unwrap(), Arg::Raw("null".to_string()));

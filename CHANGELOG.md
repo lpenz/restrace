@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Removed the typed system call records; every system call now parses into
+  `syscalls::Generic`, with `Action` carrying only `Generic` and `Exit`.
 - `strace` now always runs with `-y`, so file descriptors and the current
   working directory are annotated with their resolved paths.
 - `EventIter` and `EventStream` now yield `io::Result<Event>`, so a trace read
