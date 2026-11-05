@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Reconstructor` is now public, so a trace captured with `strace -o FILE` can
   be parsed line by line with the same split-call reconstruction the streaming
   APIs use.
+- `syscalls::Ret` gained `Hex` and `Octal` variants for return values that
+  `strace` prints in hexadecimal or octal.
 
 ### Changed
 
@@ -68,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>`. The generic result could
   only hold a plain value or an errno, so these lines failed to parse and were
   dropped from the trace.
+- Parse generic return values that `strace` prints in hexadecimal or octal,
+  such as the `0x...` addresses of `brk(2)` and `mmap(2)` and the `002` mode of
+  `umask(2)`. These lines previously failed to parse and were dropped from the
+  trace, or lost their leading zero.
 
 ## [0.2.0] - 2026-10-13
 

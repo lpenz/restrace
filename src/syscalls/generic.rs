@@ -107,8 +107,14 @@ impl FromStr for Arg {
 /// The return value of a generic system call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ret {
-    /// The value the call returned on success.
+    /// The value the call returned on success, printed in decimal.
     Value(i64),
+    /// A successful value that `strace` printed in hexadecimal, such as the
+    /// address returned by `brk(2)` or `mmap(2)`.
+    Hex(u64),
+    /// A successful value that `strace` printed in octal, such as the mode
+    /// returned by `umask(2)`.
+    Octal(u64),
     /// The errno that caused the failure.
     Errno(Errno),
     /// A value that `strace` annotated with associated information, such as
@@ -140,11 +146,13 @@ impl Ret {
         }
     }
 
-    /// Returns the numeric value of the result, or `None` for an errno.
+    /// Returns the numeric value of the result, or `None` for an errno or a
+    /// hexadecimal or octal value that does not fit in an `i64`.
     #[must_use]
     pub fn value(&self) -> Option<i64> {
         match self {
             Self::Value(value) | Self::Annotated { value, .. } => Some(*value),
+            Self::Hex(value) | Self::Octal(value) => i64::try_from(*value).ok(),
             Self::Errno(_) => None,
         }
     }
@@ -155,7 +163,7 @@ impl Ret {
     pub fn annotation(&self) -> Option<&str> {
         match self {
             Self::Annotated { annotation, .. } => Some(annotation),
-            Self::Value(_) | Self::Errno(_) => None,
+            Self::Value(_) | Self::Hex(_) | Self::Octal(_) | Self::Errno(_) => None,
         }
     }
 }
@@ -164,6 +172,8 @@ impl fmt::Display for Ret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Value(value) => write!(f, "{value}"),
+            Self::Hex(value) => write!(f, "0x{value:x}"),
+            Self::Octal(value) => write!(f, "0{value:02o}"),
             Self::Errno(errno) => write!(f, "-1 {errno}"),
             Self::Annotated { value, annotation } => write!(f, "{value}{annotation}"),
         }
@@ -171,7 +181,8 @@ impl fmt::Display for Ret {
 }
 
 /// Parses a return value as [`Display`](fmt::Display) writes it: a decimal
-/// value, `-1` followed by the errno, or a value followed by a `<...>`
+/// value, a `0x`-prefixed hexadecimal value, an octal value with a leading
+/// zero, `-1` followed by the errno, or a decimal value followed by a `<...>`
 /// annotation.
 impl FromStr for Ret {
     type Err = ParseError;
@@ -191,6 +202,16 @@ impl FromStr for Ret {
                 value,
                 annotation: annotation.to_string(),
             });
+        }
+        if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+            return u64::from_str_radix(hex, 16)
+                .map(Self::Hex)
+                .map_err(|_| error());
+        }
+        if s.len() > 1 && s.starts_with('0') && s.chars().all(|c| matches!(c, '0'..='7')) {
+            return u64::from_str_radix(&s[1..], 8)
+                .map(Self::Octal)
+                .map_err(|_| error());
         }
         s.parse::<i64>().map(Self::Value).map_err(|_| error())
     }
@@ -369,6 +390,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_hex_and_octal_results() {
+        assert_eq!(
+            Ret::from_str("0x7ff1ee560000"),
+            Ok(Ret::Hex(0x7ff1_ee56_0000))
+        );
+        assert_eq!(Ret::from_str("0X10"), Ok(Ret::Hex(0x10)));
+        assert_eq!(Ret::from_str("002"), Ok(Ret::Octal(0o2)));
+        assert_eq!(Ret::from_str("000"), Ok(Ret::Octal(0)));
+        assert_eq!(Ret::from_str("0644"), Ok(Ret::Octal(0o644)));
+        assert_eq!(Ret::Hex(0x7ff1_ee56_0000).to_string(), "0x7ff1ee560000");
+        assert_eq!(Ret::Octal(0o2).to_string(), "002");
+        assert_eq!(Ret::Octal(0).to_string(), "000");
+        assert_eq!(Ret::Octal(0o644).to_string(), "0644");
+        assert_eq!(Ret::Hex(0x2a).value(), Some(42));
+        assert_eq!(Ret::Octal(0o644).value(), Some(420));
+        assert_eq!(Ret::Hex(u64::MAX).value(), None);
+    }
+
+    #[test]
     fn parse_errno_description() {
         let syscall =
             Generic::from_str("mystery(0x1) = -1 ENOENT (No such file or directory)").unwrap();
@@ -431,6 +471,8 @@ mod tests {
         let g = Generic::from_str("mystery(0xzz) = 0").unwrap();
         assert_eq!(g.args[0], Arg::Raw("0xzz".to_string()));
         assert!(Generic::from_str("").is_err());
+        assert!(Ret::from_str("0x").is_err());
+        assert!(Ret::from_str("0xzz").is_err());
     }
 
     #[test]
@@ -444,6 +486,9 @@ mod tests {
             "mystery() = 3</dev/null<char 1:3>>",
             "mystery() = 3</tmp/gone>(deleted)",
             "mystery() = 4<pipe:[123]>",
+            "brk(NULL) = 0x5606be91b000",
+            "umask(022) = 002",
+            "umask(000) = 000",
         ] {
             assert_eq!(Generic::from_str(line).unwrap().to_string(), line);
         }

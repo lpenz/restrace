@@ -149,6 +149,38 @@ async fn parses_described_and_short_syscalls() {
     );
 }
 
+/// Checks that return values `strace` prints in hexadecimal or octal are
+/// parsed instead of dropping the whole call. `brk(2)` and `mmap(2)` return
+/// addresses in hexadecimal, and `umask(2)` returns the previous mode in
+/// octal, including its leading zeroes.
+#[::tokio::test]
+async fn parses_hex_and_octal_results() {
+    if !strace_available() {
+        return;
+    }
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", "umask 022; true"]);
+    let lines = trace_with(cmd, ["-e", "trace=brk,mmap,umask"]).await;
+
+    let has_hex = lines.iter().any(|line| {
+        matches!(
+            &line.action,
+            restrace::Action::Generic(generic)
+                if matches!(&generic.result, restrace::syscalls::Ret::Hex(_))
+        )
+    });
+    let has_octal = lines.iter().any(|line| {
+        matches!(
+            &line.action,
+            restrace::Action::Generic(generic)
+                if generic.name == "umask"
+                    && matches!(&generic.result, restrace::syscalls::Ret::Octal(_))
+        )
+    });
+    assert!(has_hex, "expected a hexadecimal result: {lines:?}");
+    assert!(has_octal, "expected an octal umask result: {lines:?}");
+}
+
 #[::tokio::test]
 async fn exits_with_code() {
     if !strace_available() {
