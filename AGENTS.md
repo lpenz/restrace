@@ -1,32 +1,30 @@
 # AGENTS.md
 
 Guidance for AI coding agents working on the *restrace* crate. It focuses on
-the most common change, adding a new typed system call record, but also
-covers the layout, commands and conventions of the project.
+extending the generic system call parser, but also covers the layout,
+commands and conventions of the project.
 
 ## Project overview
 
 *restrace* runs a command under [strace](https://strace.io) and parses the
 emitted system calls into Rust values. Every line of `strace` output becomes
 an `Event` (a pid, a timestamp and an `Action`); an `Action` is either a
-typed system call record, the `Exit` of a traced process, or the `Generic`
-fallback for calls without a dedicated type.
+`Generic` system call or the `Exit` of a traced process.
 
 ## Repository layout
 
 - `src/lib.rs`: the crate root and the public API docs.
 - `src/action.rs`: the `Action` enum and the `FromStr` dispatcher that turns
-  a trace line into a record. New syscalls are wired in here.
+  a trace line into a `Generic` call or an `Exit`.
 - `src/event.rs`: the `Event` type (pid + timestamp + `Action`).
 - `src/exit.rs`: the `Exit` record.
 - `src/reconstruct.rs`: joins split `<unfinished ...>` /
   `<... resumed>` lines.
 - `src/stdprocess.rs`, `src/tokio.rs`: spawn the command under `strace` and
   yield `Event`s (blocking iterator and async stream).
-- `src/syscalls/`: one module per supported system call, plus shared
-  argument and return types. The type modules are private; the types are
-  re-exported from `src/syscalls/mod.rs`, so the directory layout is not
-  part of the public API.
+- `src/syscalls/`: shared argument and return types, plus parsing helpers.
+  The modules are private; the types are re-exported from
+  `src/syscalls/mod.rs`, so the directory layout is not part of the public API.
 - `tests/functional.rs`: tests that run real commands under `strace` and
   parse the result. They skip themselves when `strace` is unavailable.
 - `strace/`: a reference clone of the strace sources, used only to check how
@@ -55,10 +53,12 @@ crate sets `#![deny(missing_docs)]` and
 `#![deny(rustdoc::broken_intra_doc_links)]`, so every public item needs a
 doc comment and every intra-doc link must resolve.
 
-## Adding a new syscall record
+## Extending the parser
 
-The steps below mirror the existing `read(2)` and `write(2)` records; use
-`src/syscalls/write.rs` as a template. Keep the work in one commit.
+Every system call parses into `syscalls::Generic`, which keeps its arguments
+as `Arg` values and its result as a `Ret`. Adding support for an unfamiliar
+call usually means teaching `Arg` or `Ret` to parse a new shape, not adding a
+per-syscall type. Keep the work in one commit.
 
 ### 1. Check how `strace` prints the call
 
@@ -69,10 +69,19 @@ whether the buffer is decoded on entry or on exit (this changes what a
 short or failed call looks like). The `Display` and `FromStr`
 implementations must round-trip exactly the text `strace` produces.
 
-### 2. Create the record module
+### 2. Extend the shared representation
 
-Add `src/syscalls/<name>.rs`, starting with the two-line copyright header
-that every file has:
+Most calls already parse as `Arg::Unsigned`, `Arg::Hex`, `Arg::Str`,
+`Arg::Array` or `Arg::Raw`, and as a `Ret` value. When a call still fails to
+parse, adjust `src/syscalls/generic.rs` (and its unit tests) so that the new
+argument or result shape is handled. Keep `Display` and `FromStr` symmetric,
+and fall back to `Arg::Raw` or `Ret`'s plain value for text that needs no
+decoding.
+
+### 3. Add a shared type module when needed
+
+If the new shape deserves its own type, add `src/syscalls/<name>.rs` with the
+two-line copyright header that every file has:
 
 ```rust
 // Copyright (C) 2026 Leandro Lisboa Penz <lpenz@lpenz.org>
@@ -80,94 +89,48 @@ that every file has:
 // file 'LICENSE', which is part of this source code package.
 ```
 
-The module contains a doc comment that links the man page, a public struct
-with one documented field per argument and the return value, a
-`from_raw` constructor for building the record from kernel-style values, a
-`Display` impl, a `FromStr` impl, and unit tests. For example, `write`:
+The module contains a doc comment, a public type with documented fields, a
+`Display` impl, a `FromStr` impl, and unit tests. Register `mod <name>;` and
+`pub use <name>::<Name>;` in `src/syscalls/mod.rs`, keeping both lists
+alphabetically sorted.
 
-```rust
-pub struct Write {
-    pub fd: i32,
-    pub buf: Buffer<Bytes>,
-    pub count: u64,
-    pub result: LenResult,
-}
-```
+### 4. Reuse the existing shared types
 
-`Display` prints the arguments in the same order and syntax as `strace`,
-followed by ` = ` and the result. `FromStr` splits the line at the last
-`) =`, strips the `name(` prefix, splits the argument list with the right
-helper, parses each part and returns `ParseError` on any mismatch.
+Prefer the shared types over ad-hoc parsing:
 
-### 3. Register the module
+- `Bytes` (`bytes.rs`): a byte string decoded from a buffer. `Arg::Str`
+  carries it, so every argument that `strace` prints double-quoted keeps its
+  exact bytes, including NUL and non-UTF-8 ones.
+- `Errno` (`errno.rs`): an errno name or number.
+- Helpers in `parse.rs`: `split_args_nested` (ignores commas inside quoted
+  strings and bracketed groups), `strip_description` (removes the
+  parenthesized errno text) and `split_annotation_verbatim` (splits a `<...>`
+  annotation from a result).
 
-In `src/syscalls/mod.rs`, add `mod <name>;` and `pub use <name>::<Name>;`,
-keeping both lists alphabetically sorted.
+`strace` truncates decoded strings longer than its string limit (default
+32 bytes) and appends `...` after the closing quote; `Bytes` keeps that
+marker in its `truncated` field and prints it back, so the call round-trips
+even when the trace was truncated.
 
-### 4. Add the `Action` variant
+### 5. Add a CHANGELOG entry
 
-In `src/action.rs`:
-
-- add the type to the `use crate::syscalls::{...}` import list, in
-  alphabetical order;
-- add a `/// A \`name(2)\` call.` variant to the `Action` enum, before
-  `Generic`;
-- add `Self::<Name>(syscall) => syscall.fmt(f),` to the `Display` impl;
-- add the `if let Ok(syscall) = <Name>::from_str(s) { ... }` branch to the
-  `FromStr` impl, before the `Generic::from_str(s)` fallback and keeping the
-  existing alphabetical order;
-- extend the tests in the same file: add an `is_<name>` closure next to the
-  others in `parse_variants`, add one `("<line>", is_<name>)` case there,
-  and add the same line to the `round_trip` list.
-
-The dispatch is a try-each-parser chain, so a record that fails to parse
-falls through to later parsers and finally to `Generic`.
-
-### 5. Reuse the existing argument and return types
-
-Prefer the shared types over ad-hoc parsing, and link them in the docs the
-same way the existing records do:
-
-- `Buffer<T>` (`buffer.rs`): an argument that `strace` decodes or shows as a
-  raw address; pair it with `Bytes` (`bytes.rs`) for byte strings, `Quoted`
-  (`quoted.rs`) for quoted paths, or `IovecList` (`iovec.rs`) for iovec
-  arrays.
-- `LenResult` (`lenresult.rs`): a byte-count-or-errno return value.
-- `OkResult` (`result.rs`): a generic success-or-errno return value.
-- `FdResult` (`fd.rs`), `Errno` (`errno.rs`), `Mode`/`FileMode`/`AccessMode`,
-  `Device`, `DirFd` and the various flag types.
-- Helpers in `parse.rs`: `split_args` and `split_args_nested` (ignores
-  commas inside brackets and braces), `unquote`, `strip_description`
-  (removes the parenthesized errno text) and `strip_comment`.
-
-Note that `strace` truncates decoded strings longer than its string limit
-(default 32 bytes) and appends `...`; this crate does not parse that marker
-yet, so keep functional-test buffers short.
-
-### 6. Update the `LenResult` doc list
-
-If the record uses `LenResult`, add its link to the list in
-`src/syscalls/lenresult.rs` so the documented set of calls stays complete.
-
-### 7. Add a CHANGELOG entry
-
-Under `## [Unreleased]` and `### Added` in `CHANGELOG.md`, add a bullet in
-the same form as the others, for example:
+Under `## [Unreleased]` in `CHANGELOG.md`, add a bullet in the section that
+fits the change, for example:
 
 ```markdown
-- A typed `write(2)` record, carried as the `Action::Write` variant, with the
-  `Bytes` buffer-value type.
+- Parse the `...` that `strace` appends when it truncates a decoded string,
+  keeping the marker in `syscalls::Bytes` so the call round-trips.
 ```
 
-### 8. Add a functional test
+### 6. Add a functional test
 
-In `tests/functional.rs`, add a `parses_<name>` test that runs a real
-command through `trace_shell` and asserts that the record is parsed. Model
-it on `parses_read` and `parses_write`. Guard it with
-`if !strace_available() { return; }` and pick a command that reliably makes
-the call.
+In `tests/functional.rs`, add a test that runs a real command through
+`trace` or `trace_shell` and asserts that the new argument or result is
+parsed. Guard it with `if !strace_available() { return; }` (and, when it
+uses `python3`, `if !python3_available() { return; }`) and pick a command
+that reliably produces the call.
 
-### 9. Verify and commit
+### 7. Verify and commit
 
 Run `cargo fmt`, `cargo clippy --all-targets --all-features`,
 `cargo test --all-features` and `omnilint repository`, then review
@@ -186,6 +149,6 @@ keep the format consistent.
 
 This `AGENTS.md` is a living document. Update it whenever the workflow it
 describes changes, for example when a new shared type or helper is added,
-when the lint or test commands change, or when a step in the "Adding a new
-syscall record" process turns out to be incomplete or wrong. Keep it short,
-concrete and aligned with the actual code.
+when the lint or test commands change, or when a step in the "Extending the
+parser" process turns out to be incomplete or wrong. Keep it short, concrete
+and aligned with the actual code.

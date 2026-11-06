@@ -8,9 +8,9 @@
 //! any system call representation can be read and written even when no
 //! dedicated type parses it.
 
+use super::bytes::Bytes;
 use super::errno::Errno;
 use super::parse::{self, ParseError};
-use std::ffi::CString;
 use std::fmt;
 use std::str::FromStr;
 
@@ -26,8 +26,8 @@ pub enum Arg {
     Signed(i64),
     /// A value printed in hexadecimal with a `0x` prefix.
     Hex(u64),
-    /// A string, printed double-quoted.
-    Str(CString),
+    /// A byte string, printed double-quoted.
+    Str(Bytes),
     /// An array of arguments, printed bracket-delimited and comma-separated.
     Array(Vec<Arg>),
     /// A raw argument value printed verbatim.
@@ -40,7 +40,7 @@ impl fmt::Display for Arg {
             Self::Unsigned(value) => write!(f, "{value}"),
             Self::Signed(value) => write!(f, "{value}"),
             Self::Hex(value) => write!(f, "0x{value:x}"),
-            Self::Str(value) => write!(f, "{:?}", value.to_string_lossy()),
+            Self::Str(value) => write!(f, "{value}"),
             Self::Array(values) => {
                 f.write_str("[")?;
                 for (i, value) in values.iter().enumerate() {
@@ -64,10 +64,8 @@ impl FromStr for Arg {
 
     fn from_str(s: &str) -> Result<Self, ParseError> {
         let s = s.trim();
-        let error = || ParseError::new("argument", s);
         if s.starts_with('"') {
-            let value = parse::unquote(s, "argument")?;
-            return CString::new(value).map(Self::Str).map_err(|_| error());
+            return Bytes::from_str(s).map(Self::Str);
         }
         if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
             if let Ok(v) = u64::from_str_radix(hex, 16) {
@@ -327,7 +325,7 @@ mod tests {
                 Arg::Unsigned(42),
                 Arg::Signed(-7),
                 Arg::Hex(0xdead),
-                Arg::Str(CString::new("a, b").unwrap()),
+                Arg::Str(Bytes::new(b"a, b".to_vec())),
             ],
             result: Ret::Value(-1),
         };
@@ -344,13 +342,24 @@ mod tests {
         assert_eq!(Arg::from_str("0xdead"), Ok(Arg::Hex(0xdead)));
         assert_eq!(
             Arg::from_str("\"a, b\""),
-            Ok(Arg::Str(CString::new("a, b").unwrap()))
+            Ok(Arg::Str(Bytes::new(b"a, b".to_vec())))
+        );
+        assert_eq!(
+            Arg::from_str("\"a\\0\\377\""),
+            Ok(Arg::Str(Bytes::new(b"a\0\xff".to_vec())))
+        );
+        assert_eq!(
+            Arg::from_str("\"a, b\"..."),
+            Ok(Arg::Str(Bytes {
+                bytes: b"a, b".to_vec(),
+                truncated: true,
+            }))
         );
         assert_eq!(
             Arg::from_str("[1, \"a\", 0x2]"),
             Ok(Arg::Array(vec![
                 Arg::Unsigned(1),
-                Arg::Str(CString::new("a").unwrap()),
+                Arg::Str(Bytes::new(b"a".to_vec())),
                 Arg::Hex(2),
             ]))
         );
@@ -378,7 +387,7 @@ mod tests {
             Generic::from_str("mystery(1, -2, \"a, b\", [\"x\", \"y\"]) = -1 EINVAL").unwrap();
         assert_eq!(syscall.args[0], Arg::Unsigned(1));
         assert_eq!(syscall.args[1], Arg::Signed(-2));
-        assert_eq!(syscall.args[2], Arg::Str(CString::new("a, b").unwrap()));
+        assert_eq!(syscall.args[2], Arg::Str(Bytes::new(b"a, b".to_vec())));
         assert_eq!(syscall.result, Ret::Errno(Errno::EINVAL));
     }
 
@@ -482,6 +491,7 @@ mod tests {
             "syscall_0x123() = -1 ENOENT",
             "mystery(42, -7, 0xdead, \"a, b\") = -1",
             "mystery(1, 0x2, \"quote\\\"here\", [\"x\", \"y\"]) = 4294967296",
+            "write(1, \"a\\0\\377\"..., 3) = 3",
             "fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>",
             "mystery() = 3</dev/null<char 1:3>>",
             "mystery() = 3</tmp/gone>(deleted)",

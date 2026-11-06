@@ -10,10 +10,12 @@
 //! The [`Action`](crate::Action) enum that unifies these records with the
 //! process [`Exit`](crate::Exit) lives at the crate root.
 
+mod bytes;
 mod errno;
 mod generic;
 mod parse;
 
+pub use bytes::Bytes;
 pub use errno::Errno;
 pub use generic::{Arg, Generic, Ret};
 pub use parse::ParseError;

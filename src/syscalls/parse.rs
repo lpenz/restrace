@@ -70,78 +70,6 @@ pub(crate) fn split_args_nested(input: &str) -> Vec<&str> {
     parts
 }
 
-/// Parses a double-quoted string as formatted by the `{:?}` placeholder.
-pub(crate) fn unquote(input: &str, part: &'static str) -> Result<String, ParseError> {
-    let error = || ParseError::new(part, input);
-    let body = input
-        .strip_prefix('"')
-        .and_then(|s| s.strip_suffix('"'))
-        .ok_or_else(error)?;
-    let mut out = String::with_capacity(body.len());
-    let mut chars = body.chars();
-    while let Some(c) = chars.next() {
-        if c != '\\' {
-            out.push(c);
-            continue;
-        }
-        match chars.next() {
-            Some('\\') => out.push('\\'),
-            Some('"') => out.push('"'),
-            Some('n') => out.push('\n'),
-            Some('r') => out.push('\r'),
-            Some('t') => out.push('\t'),
-            Some('f') => out.push('\u{c}'),
-            Some('v') => out.push('\u{b}'),
-            Some(d @ '0'..='7') => {
-                // `strace` prints a non-printable byte as one to three octal
-                // digits; consume up to two more.
-                let mut digits = String::with_capacity(3);
-                digits.push(d);
-                for _ in 0..2 {
-                    match chars.clone().next() {
-                        Some(c @ '0'..='7') => {
-                            digits.push(c);
-                            chars.next();
-                        }
-                        _ => break,
-                    }
-                }
-                let byte = u8::from_str_radix(&digits, 8).map_err(|_| error())?;
-                out.push(char::from(byte));
-            }
-            Some('x') => {
-                let hex: String = chars.by_ref().take(2).collect();
-                let byte = u8::from_str_radix(&hex, 16).map_err(|_| error())?;
-                if hex.len() != 2 || !byte.is_ascii() {
-                    return Err(error());
-                }
-                out.push(char::from(byte));
-            }
-            Some('u') => {
-                if chars.next() != Some('{') {
-                    return Err(error());
-                }
-                let mut hex = String::new();
-                let mut closed = false;
-                for c in chars.by_ref() {
-                    if c == '}' {
-                        closed = true;
-                        break;
-                    }
-                    hex.push(c);
-                }
-                if !closed || hex.is_empty() || hex.len() > 6 {
-                    return Err(error());
-                }
-                let code = u32::from_str_radix(&hex, 16).map_err(|_| error())?;
-                out.push(char::from_u32(code).ok_or_else(error)?);
-            }
-            _ => return Err(error()),
-        }
-    }
-    Ok(out)
-}
-
 /// Removes the parenthesized description `strace` appends to an errno, such as
 /// the ` (No such file or directory)` in `ENOENT (No such file or directory)`.
 pub(crate) fn strip_description(input: &str) -> &str {
@@ -210,45 +138,6 @@ mod tests {
             split_args_nested("{d_ino=1, d_name=\"a, b\"}"),
             ["{d_ino=1, d_name=\"a, b\"}"]
         );
-    }
-
-    #[test]
-    fn unquote_plain() {
-        assert_eq!(unquote("\"/tmp/file\"", "pathname").unwrap(), "/tmp/file");
-    }
-
-    #[test]
-    fn unquote_empty() {
-        assert_eq!(unquote("\"\"", "pathname").unwrap(), "");
-    }
-
-    #[test]
-    fn unquote_escapes() {
-        assert_eq!(
-            unquote("\"a\\\\b\\\"c\\nd\\x41\\u{263a}\"", "pathname").unwrap(),
-            "a\\b\"c\ndA\u{263a}"
-        );
-    }
-
-    #[test]
-    fn unquote_octal_and_control_escapes() {
-        assert_eq!(unquote("\"\\33[0m\"", "pathname").unwrap(), "\u{1b}[0m");
-        assert_eq!(unquote("\"\\f\\v\"", "pathname").unwrap(), "\u{c}\u{b}");
-        assert_eq!(unquote("\"\\0\"", "pathname").unwrap(), "\0");
-        assert_eq!(unquote("\"\\377\"", "pathname").unwrap(), "\u{ff}");
-    }
-
-    #[test]
-    fn unquote_rejects_unquoted() {
-        assert!(unquote("/tmp/file", "pathname").is_err());
-    }
-
-    #[test]
-    fn unquote_rejects_bad_escape() {
-        assert!(unquote("\"\\q\"", "pathname").is_err());
-        assert!(unquote("\"\\x4\"", "pathname").is_err());
-        assert!(unquote("\"\\u{}\"", "pathname").is_err());
-        assert!(unquote("\"\\u{41\"", "pathname").is_err());
     }
 
     #[test]

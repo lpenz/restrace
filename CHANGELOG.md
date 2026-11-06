@@ -26,9 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   APIs use.
 - `syscalls::Ret` gained `Hex` and `Octal` variants for return values that
   `strace` prints in hexadecimal or octal.
+- `syscalls::Bytes`, a byte string decoded from a buffer, which keeps the raw
+  bytes, including NUL and non-UTF-8 ones, and whether `strace` truncated it
+  with `...`.
 
 ### Changed
 
+- `syscalls::Arg::Str` now carries a `syscalls::Bytes` instead of a
+  `CString`, so a generic call keeps the exact bytes `strace` printed.
 - Removed the typed system call records; every system call now parses into
   `syscalls::Generic`, with `Action` carrying only `Generic` and `Exit`.
 - `strace` now always runs with `-y`, so file descriptors and the current
@@ -66,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   character. Calls carrying such a string, for example `execve(2)` with an
   environment variable that holds terminal escapes, previously failed to parse
   and caused the whole call to be dropped.
+- Keep NUL and non-UTF-8 bytes in decoded strings, and parse the `...` that
+  `strace` appends after a string it truncated. Calls carrying such a string,
+  such as a `write(2)` of binary data, previously failed to parse or lost the
+  exact bytes, and a truncated string did not round-trip.
 - Parse a generic call whose return value `strace` annotated with `-y`, such as
   `fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>`. The generic result could
   only hold a plain value or an errno, so these lines failed to parse and were

@@ -182,6 +182,37 @@ async fn parses_hex_and_octal_results() {
 }
 
 #[::tokio::test]
+async fn parses_binary_and_truncated_strings() {
+    if !strace_available() {
+        return;
+    }
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", "printf '\\377\\000abcdef' >/dev/null"]);
+    let lines = trace_with(cmd, ["-s", "4", "-e", "trace=write"]).await;
+
+    let buf = lines
+        .iter()
+        .filter_map(|line| match &line.action {
+            restrace::Action::Generic(generic) if generic.name == "write" => Some(generic),
+            _ => None,
+        })
+        .flat_map(|generic| &generic.args)
+        .find_map(|arg| match arg {
+            restrace::syscalls::Arg::Str(bytes) if bytes.bytes == b"\xff\0ab" => Some(bytes),
+            _ => None,
+        })
+        .expect("expected a parsed write(2) with the binary buffer");
+    assert!(
+        buf.truncated,
+        "expected strace to mark the buffer truncated"
+    );
+    for line in &lines {
+        let reparsed: Event = line.to_string().parse().expect("reparse displayed line");
+        assert_eq!(line, &reparsed);
+    }
+}
+
+#[::tokio::test]
 async fn exits_with_code() {
     if !strace_available() {
         return;
