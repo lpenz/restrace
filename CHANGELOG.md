@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `syscalls::Bytes`, a byte string decoded from a buffer, which keeps the raw
   bytes, including NUL and non-UTF-8 ones, and whether `strace` truncated it
   with `...`.
+- `syscalls::Ret::Described` and the `Ret::description` accessor for results
+  that `strace` follows with a parenthesized description, such as the
+  `0x1 (flags FD_CLOEXEC)` of `fcntl(F_GETFD)`.
 
 ### Changed
 
@@ -83,6 +86,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   such as the `0x...` addresses of `brk(2)` and `mmap(2)` and the `002` mode of
   `umask(2)`. These lines previously failed to parse and were dropped from the
   trace, or lost their leading zero.
+- Parse a generic return value that `strace` follows with a parenthesized
+  description, such as the `0x1 (flags FD_CLOEXEC)` of `fcntl(F_GETFD)` and
+  the `0 (Timeout)` of `poll(2)`. These lines previously failed to parse and
+  the whole call was dropped from the trace.
 
 ## [0.2.0] - 2026-10-13
 

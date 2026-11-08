@@ -79,6 +79,19 @@ pub(crate) fn strip_description(input: &str) -> &str {
     }
 }
 
+/// Splits a value followed by a parenthesized description, such as the
+/// `0x1 (flags FD_CLOEXEC)` that `strace` prints for `fcntl(F_GETFD)`.
+///
+/// Returns the bare value and the description without the parentheses, or
+/// `None` when there is no trailing parenthesized group.
+pub(crate) fn split_description(input: &str) -> Option<(&str, &str)> {
+    let input = input.trim();
+    let rest = input.strip_suffix(')')?;
+    let open = rest.find(" (")?;
+    let (value, description) = rest.split_at(open);
+    Some((value.trim_end(), &description[2..]))
+}
+
 /// Like [`split_annotation`], but keeps the annotation verbatim: the returned
 /// suffix starts at the opening `<` and runs to the end of the input, so it
 /// includes any marker `strace` appends after the closing bracket, such as the
@@ -162,6 +175,27 @@ mod tests {
         assert_eq!(strip_description("ENOENT"), "ENOENT");
         assert_eq!(strip_description("5"), "5");
         assert_eq!(strip_description(""), "");
+    }
+
+    #[test]
+    fn split_description_keeps_text() {
+        assert_eq!(
+            split_description("0x1 (flags FD_CLOEXEC)"),
+            Some(("0x1", "flags FD_CLOEXEC"))
+        );
+        assert_eq!(split_description("0 (Timeout)"), Some(("0", "Timeout")));
+        assert_eq!(
+            split_description("1 (in [0], left {tv_sec=0, tv_usec=0})"),
+            Some(("1", "in [0], left {tv_sec=0, tv_usec=0}"))
+        );
+    }
+
+    #[test]
+    fn split_description_ignores_other_text() {
+        assert_eq!(split_description("0x2a"), None);
+        assert_eq!(split_description("10</dev/null>"), None);
+        assert_eq!(split_description("3</tmp/gone>(deleted)"), None);
+        assert_eq!(split_description("1 (unclosed"), None);
     }
 
     #[test]

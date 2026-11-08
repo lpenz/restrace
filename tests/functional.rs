@@ -418,3 +418,41 @@ async fn parses_generic_annotated_result() {
         "expected the annotated fcntl result to be parsed: {lines:?}"
     );
 }
+
+/// Checks that a return value `strace` follows with a parenthesized
+/// description is parsed instead of dropping the whole call. `fcntl(F_GETFD)`
+/// and `fcntl(F_GETFL)` report the decoded flags this way, as in
+/// `fcntl(3</dev/null>, F_GETFD) = 0x1 (flags FD_CLOEXEC)`.
+#[::tokio::test]
+async fn parses_described_result() {
+    if !strace_available() || !python3_available() {
+        return;
+    }
+    let mut cmd = Command::new("python3");
+    cmd.args([
+        "-c",
+        "import fcntl, os; fd = os.open('/dev/null', os.O_RDONLY | os.O_CLOEXEC); \
+         fcntl.fcntl(fd, fcntl.F_GETFD); fcntl.fcntl(fd, fcntl.F_GETFL)",
+    ]);
+    let lines = trace_with(cmd, ["-e", "trace=fcntl"]).await;
+
+    let described = lines.iter().find_map(|line| {
+        if let restrace::Action::Generic(generic) = &line.action
+            && let Some(description) = generic.result.description()
+        {
+            return Some((generic.name.as_str(), generic.result.value(), description));
+        }
+        None
+    });
+    assert!(
+        matches!(
+            described,
+            Some(("fcntl", Some(_), description)) if description.starts_with("flags ")
+        ),
+        "expected a described fcntl result to be parsed: {lines:?}"
+    );
+    for line in &lines {
+        let reparsed: Event = line.to_string().parse().expect("reparse displayed line");
+        assert_eq!(line, &reparsed);
+    }
+}

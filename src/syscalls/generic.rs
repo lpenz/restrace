@@ -128,6 +128,16 @@ pub enum Ret {
         /// The associated information, verbatim, starting with `<`.
         annotation: String,
     },
+    /// A value that `strace` followed with a parenthesized description, such
+    /// as the `0x1 (flags FD_CLOEXEC)` of `fcntl(F_GETFD)` or the
+    /// `0 (Timeout)` of `poll(2)`.
+    Described {
+        /// The value the call returned, in the notation `strace` printed it:
+        /// a decimal, hexadecimal or octal [`Ret`] value.
+        value: Box<Ret>,
+        /// The description between the parentheses, without them.
+        description: String,
+    },
 }
 
 impl Ret {
@@ -151,6 +161,7 @@ impl Ret {
         match self {
             Self::Value(value) | Self::Annotated { value, .. } => Some(*value),
             Self::Hex(value) | Self::Octal(value) => i64::try_from(*value).ok(),
+            Self::Described { value, .. } => value.value(),
             Self::Errno(_) => None,
         }
     }
@@ -161,7 +172,25 @@ impl Ret {
     pub fn annotation(&self) -> Option<&str> {
         match self {
             Self::Annotated { annotation, .. } => Some(annotation),
-            Self::Value(_) | Self::Hex(_) | Self::Octal(_) | Self::Errno(_) => None,
+            Self::Value(_)
+            | Self::Hex(_)
+            | Self::Octal(_)
+            | Self::Described { .. }
+            | Self::Errno(_) => None,
+        }
+    }
+
+    /// Returns the parenthesized description `strace` printed after the
+    /// value, or `None` when the result carries none.
+    #[must_use]
+    pub fn description(&self) -> Option<&str> {
+        match self {
+            Self::Described { description, .. } => Some(description),
+            Self::Value(_)
+            | Self::Hex(_)
+            | Self::Octal(_)
+            | Self::Annotated { .. }
+            | Self::Errno(_) => None,
         }
     }
 }
@@ -174,6 +203,7 @@ impl fmt::Display for Ret {
             Self::Octal(value) => write!(f, "0{value:02o}"),
             Self::Errno(errno) => write!(f, "-1 {errno}"),
             Self::Annotated { value, annotation } => write!(f, "{value}{annotation}"),
+            Self::Described { value, description } => write!(f, "{value} ({description})"),
         }
     }
 }
@@ -199,6 +229,13 @@ impl FromStr for Ret {
             return Ok(Self::Annotated {
                 value,
                 annotation: annotation.to_string(),
+            });
+        }
+        if let Some((value, description)) = parse::split_description(s) {
+            let value = Self::from_str(value)?;
+            return Ok(Self::Described {
+                value: Box::new(value),
+                description: description.to_string(),
             });
         }
         if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
@@ -458,6 +495,43 @@ mod tests {
     }
 
     #[test]
+    fn parse_described_result() {
+        for (line, value, description) in [
+            ("0x1 (flags FD_CLOEXEC)", Ret::Hex(1), "flags FD_CLOEXEC"),
+            (
+                "0x8000 (flags O_RDONLY|O_LARGEFILE)",
+                Ret::Hex(0x8000),
+                "flags O_RDONLY|O_LARGEFILE",
+            ),
+            ("0 (Timeout)", Ret::Value(0), "Timeout"),
+            (
+                "1 (in [0], left {tv_sec=0, tv_usec=0})",
+                Ret::Value(1),
+                "in [0], left {tv_sec=0, tv_usec=0}",
+            ),
+            ("0x0 (SCHED_OTHER)", Ret::Hex(0), "SCHED_OTHER"),
+        ] {
+            let ret = Ret::from_str(line).unwrap();
+            assert_eq!(
+                ret,
+                Ret::Described {
+                    value: Box::new(value),
+                    description: description.to_string(),
+                }
+            );
+            assert_eq!(ret.description(), Some(description));
+            assert_eq!(ret.annotation(), None);
+            assert_eq!(ret.to_string(), line);
+        }
+        assert_eq!(
+            Ret::from_str("0x1 (flags FD_CLOEXEC)").unwrap().value(),
+            Some(1)
+        );
+        assert_eq!(Ret::from_str("0 (Timeout)").unwrap().value(), Some(0));
+        assert_eq!(Ret::Value(3).description(), None);
+    }
+
+    #[test]
     fn parse_annotated_result_invalid() {
         assert!(Ret::from_str("</dev/null>").is_err());
         assert!(Ret::from_str("3</tmp/unclosed").is_err());
@@ -496,6 +570,9 @@ mod tests {
             "mystery() = 3</dev/null<char 1:3>>",
             "mystery() = 3</tmp/gone>(deleted)",
             "mystery() = 4<pipe:[123]>",
+            "fcntl(10</dev/null>, F_GETFD) = 0x1 (flags FD_CLOEXEC)",
+            "poll([{fd=0, events=POLLIN}], 1, 0) = 0 (Timeout)",
+            "sched_getscheduler(0) = 0x0 (SCHED_OTHER)",
             "brk(NULL) = 0x5606be91b000",
             "umask(022) = 002",
             "umask(000) = 000",
