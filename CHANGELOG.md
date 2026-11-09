@@ -12,23 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable `strace` options via `StraceOptions` and the new
   `under_strace_with_options` and `stream_with_options` entry points in
   `stdprocess`, with matching helpers in the `tokio` integration.
-- `stdprocess::stream_with` and, under the `tokio` feature, `tokio::stream_with`
-  and `tokio::under_strace_with`, to run a command under `strace` with extra
-  `strace` arguments while still reading and parsing the trace from a dedicated
-  pipe.
-- A new `Fd` argument type that carries the path `strace` resolves for a file
-  descriptor when run with `-y`, such as the `3</tmp/file>` of
-  `close(3</tmp/file>)`. The `close(2)` and `fchdir(2)` descriptor arguments
-  and the `Fd` of `FdResult` now use it, and `DirFd` gained the same optional
-  path so the `*at` records round-trip `AT_FDCWD</cwd>` and `4</dir>`.
+- `stdprocess::under_strace_with` and `stdprocess::stream_with` and, under the
+  `tokio` feature, `tokio::stream_with` and `tokio::under_strace_with`, to run
+  a command under `strace` with extra `strace` arguments while still reading
+  and parsing the trace from a dedicated pipe.
 - `Reconstructor` is now public, so a trace captured with `strace -o FILE` can
   be parsed line by line with the same split-call reconstruction the streaming
   APIs use.
-- `syscalls::Ret` gained `Hex` and `Octal` variants for return values that
-  `strace` prints in hexadecimal or octal.
+- `syscalls::Arg::Raw`, which keeps an argument that has no numeric or string
+  form, such as a symbolic flag or a `NULL` pointer, verbatim.
 - `syscalls::Bytes`, a byte string decoded from a buffer, which keeps the raw
   bytes, including NUL and non-UTF-8 ones, and whether `strace` truncated it
   with `...`.
+- `syscalls::Ret` gained `Hex` and `Octal` variants for return values that
+  `strace` prints in hexadecimal or octal.
+- `syscalls::Ret::Annotated` for return values that carry the associated
+  information `-y` appends, such as
+  `fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>`.
 - `syscalls::Ret::Described` and the `Ret::description` accessor for results
   that `strace` follows with a parenthesized description, such as the
   `0x1 (flags FD_CLOEXEC)` of `fcntl(F_GETFD)`.
@@ -43,8 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   working directory are annotated with their resolved paths.
 - `EventIter` and `EventStream` now yield `io::Result<Event>`, so a trace read
   error is reported instead of ending the stream as if it were EOF.
-- `syscalls::Ret` gained an `Annotated` variant for return values that carry
-  `-y` associated information, and is no longer `Copy`.
+- `syscalls::Ret` is no longer `Copy`, because `Annotated` carries a
+  `String`.
 
 ### Fixed
 
@@ -63,9 +63,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split call arguments on commas only at the top level of `[...]`, `{...}` and
   `(...)` groups, so a generic call that carries a structure or a nested call,
   such as `stat(2)`'s buffer or a `makedev(0, 0x1e)`, parses.
-- Ignore the `/* ... */` comment `strace` appends to a flag value with no
-  known name, such as `0x2000 /* AT_??? */`, and print the same comment for
-  unnamed bits so the value round-trips.
+- Parse a generic call whose arguments carry a value the decoder does not
+  recognize, such as the symbolic `MSG_NOSIGNAL` or the `/* AT_??? */`
+  comment `strace` appends to an unnamed flag, keeping the text as a raw
+  argument instead of dropping the whole call.
 - Recognize the full set of `errno` names that `strace` prints, instead of a
   small subset. Failure results using an unlisted name, such as `EFAULT` or
   `EXDEV`, previously failed to parse and caused the whole call to be dropped.
