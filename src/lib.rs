@@ -66,9 +66,8 @@
 //! Reconstructed events keep the timestamp of the unfinished line, so they
 //! are not necessarily ordered by time: a call that started early can be
 //! emitted after one that completed in between. A resumed call whose merged
-//! text is not decodable, such as one that resumes with the indeterminate
-//! result `= ?`, is dropped, as it would be if `strace` had printed it on one
-//! line.
+//! text is not decodable is dropped, as it would be if `strace` had printed
+//! it on one line.
 //!
 //! # Parsing a trace file
 //!

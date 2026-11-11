@@ -365,6 +365,66 @@ async fn parses_y_annotated_fd() {
     );
 }
 
+/// Checks that the `?` pseudo result of a call that has no return value is
+/// parsed instead of dropping the whole call: every traced command ends with
+/// the `exit_group(2)` that `strace` prints as `exit_group(0) = ?`.
+#[::tokio::test]
+async fn parses_indeterminate_exit_group() {
+    if !strace_available() {
+        return;
+    }
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", "exit 42"]);
+    let lines = trace_with(cmd, ["-e", "trace=exit_group"]).await;
+
+    let exit_group = lines
+        .iter()
+        .find_map(|line| match &line.action {
+            restrace::Action::Generic(generic) if generic.name == "exit_group" => Some(generic),
+            _ => None,
+        })
+        .expect("expected a parsed exit_group call");
+    assert_eq!(
+        exit_group.result,
+        restrace::syscalls::Ret::Indeterminate { errno: None }
+    );
+}
+
+/// Checks that the `? ERESTART...` result of a call interrupted by a signal
+/// that the kernel restarts is parsed instead of dropping the whole call: the
+/// ignored `SIGWINCH` interrupts the `clock_nanosleep(2)` of a background
+/// `sleep`, which the kernel then restarts with `restart_syscall(2)`.
+#[::tokio::test]
+async fn parses_indeterminate_erestart() {
+    if !strace_available() || !strace_can_trace_forks() {
+        return;
+    }
+    let lines = trace_shell("sleep 0.2 & p=$!; sleep 0.05; kill -WINCH $p; wait").await;
+
+    let erestart = lines.iter().find_map(|line| {
+        if let restrace::Action::Generic(generic) = &line.action
+            && let restrace::syscalls::Ret::Indeterminate { errno: Some(errno) } = &generic.result
+        {
+            return errno.name();
+        }
+        None
+    });
+    assert_eq!(
+        erestart,
+        Some("ERESTART_RESTARTBLOCK"),
+        "expected the interrupted clock_nanosleep to be parsed: {lines:?}"
+    );
+    // The restarted call parses too, keeping the resuming marker as a raw
+    // argument.
+    assert!(
+        lines.iter().any(|line| matches!(
+            &line.action,
+            restrace::Action::Generic(generic) if generic.name == "restart_syscall"
+        )),
+        "expected a parsed restart_syscall: {lines:?}"
+    );
+}
+
 /// Runs `cmd` under `strace`, capturing the raw trace to a temporary file.
 fn raw_trace(cmd: &[&str]) -> String {
     // Tests run in parallel threads of the same process, so the path must be

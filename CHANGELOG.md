@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `syscalls::Ret::Described` and the `Ret::description` accessor for results
   that `strace` follows with a parenthesized description, such as the
   `0x1 (flags FD_CLOEXEC)` of `fcntl(F_GETFD)`.
+- `syscalls::Ret::Indeterminate` for the `?` pseudo result of a call that
+  `strace` prints without a return value, such as the `exit_group(2)` that
+  ends every traced process, optionally followed by the errno of a call
+  interrupted by a signal that the kernel restarts.
 
 ### Changed
 
@@ -91,6 +95,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   description, such as the `0x1 (flags FD_CLOEXEC)` of `fcntl(F_GETFD)` and
   the `0 (Timeout)` of `poll(2)`. These lines previously failed to parse and
   the whole call was dropped from the trace.
+- Parse the `?` pseudo result of a call that has no return value, such as the
+  `exit_group(0) = ?` that ends every traced process, and the
+  `? ERESTART...` errno of a call interrupted by a signal that the kernel
+  restarts, such as
+  `rt_sigsuspend([], 8) = ? ERESTARTNOHAND (To be restarted if no handler)`.
+  These lines previously failed to parse and were dropped from the trace,
+  which lost the final call of every traced process.
 
 ## [0.2.0] - 2026-10-13
 

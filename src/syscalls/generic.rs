@@ -115,6 +115,19 @@ pub enum Ret {
     Octal(u64),
     /// The errno that caused the failure.
     Errno(Errno),
+    /// A call that `strace` prints without a return value, as `?`.
+    ///
+    /// `strace` prints `?` instead of a value for calls that never return,
+    /// such as the `exit_group(2)` that ends every traced process, and for
+    /// calls interrupted by a signal that the kernel restarts, as in
+    /// `rt_sigsuspend([], 8) = ? ERESTARTNOHAND (To be restarted if no
+    /// handler)`. The errno that follows the `?` is kept with its
+    /// parenthesized description stripped, as for [`Ret::Errno`], so
+    /// [`Display`](fmt::Display) writes the call back without it.
+    Indeterminate {
+        /// The errno that followed the `?`, or `None` for a bare `?`.
+        errno: Option<Errno>,
+    },
     /// A value that `strace` annotated with associated information, such as
     /// the descriptor `fcntl(2)` returned under `-y`:
     /// `fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>`.
@@ -162,7 +175,7 @@ impl Ret {
             Self::Value(value) | Self::Annotated { value, .. } => Some(*value),
             Self::Hex(value) | Self::Octal(value) => i64::try_from(*value).ok(),
             Self::Described { value, .. } => value.value(),
-            Self::Errno(_) => None,
+            Self::Errno(_) | Self::Indeterminate { .. } => None,
         }
     }
 
@@ -176,7 +189,8 @@ impl Ret {
             | Self::Hex(_)
             | Self::Octal(_)
             | Self::Described { .. }
-            | Self::Errno(_) => None,
+            | Self::Errno(_)
+            | Self::Indeterminate { .. } => None,
         }
     }
 
@@ -190,7 +204,8 @@ impl Ret {
             | Self::Hex(_)
             | Self::Octal(_)
             | Self::Annotated { .. }
-            | Self::Errno(_) => None,
+            | Self::Errno(_)
+            | Self::Indeterminate { .. } => None,
         }
     }
 }
@@ -202,6 +217,8 @@ impl fmt::Display for Ret {
             Self::Hex(value) => write!(f, "0x{value:x}"),
             Self::Octal(value) => write!(f, "0{value:02o}"),
             Self::Errno(errno) => write!(f, "-1 {errno}"),
+            Self::Indeterminate { errno: None } => f.write_str("?"),
+            Self::Indeterminate { errno: Some(errno) } => write!(f, "? {errno}"),
             Self::Annotated { value, annotation } => write!(f, "{value}{annotation}"),
             Self::Described { value, description } => write!(f, "{value} ({description})"),
         }
@@ -210,8 +227,8 @@ impl fmt::Display for Ret {
 
 /// Parses a return value as [`Display`](fmt::Display) writes it: a decimal
 /// value, a `0x`-prefixed hexadecimal value, an octal value with a leading
-/// zero, `-1` followed by the errno, or a decimal value followed by a `<...>`
-/// annotation.
+/// zero, `-1` followed by the errno, a `?` optionally followed by the errno,
+/// or a decimal value followed by a `<...>` annotation.
 impl FromStr for Ret {
     type Err = ParseError;
 
@@ -222,6 +239,19 @@ impl FromStr for Ret {
             return Errno::from_str(parse::strip_description(errno.trim()))
                 .map(Self::Errno)
                 .map_err(|_| error());
+        }
+        // The `?` pseudo result of a call that has no return value, such as
+        // the `exit_group(2)` that ends a process or a call that the kernel
+        // restarts after a signal.
+        if let Some(rest) = s.strip_prefix('?') {
+            let rest = rest.trim();
+            return Ok(Self::Indeterminate {
+                errno: if rest.is_empty() {
+                    None
+                } else {
+                    Some(Errno::from_str(parse::strip_description(rest)).map_err(|_| error())?)
+                },
+            });
         }
         let (value, annotation) = parse::split_annotation_verbatim(s);
         if let Some(annotation) = annotation {
@@ -462,6 +492,35 @@ mod tests {
     }
 
     #[test]
+    fn parse_indeterminate() {
+        // A call that never returns, such as the exit_group(2) that ends every
+        // traced process, prints a bare `?`.
+        let syscall = Generic::from_str("exit_group(0) = ?").unwrap();
+        assert_eq!(syscall.name, "exit_group");
+        assert_eq!(syscall.result, Ret::Indeterminate { errno: None });
+        assert_eq!(syscall.result.value(), None);
+        assert_eq!(syscall.result.annotation(), None);
+        assert_eq!(syscall.result.description(), None);
+
+        // A call interrupted by a signal that the kernel restarts prints its
+        // errno, with the description stripped as for Ret::Errno.
+        let syscall = Generic::from_str(
+            "rt_sigsuspend([], 8) = ? ERESTARTNOHAND (To be restarted if no handler)",
+        )
+        .unwrap();
+        assert_eq!(
+            syscall.result,
+            Ret::Indeterminate {
+                errno: Some(Errno(514)),
+            }
+        );
+        assert_eq!(
+            syscall.to_string(),
+            "rt_sigsuspend([], 8) = ? ERESTARTNOHAND"
+        );
+    }
+
+    #[test]
     fn parse_annotated_result() {
         let syscall =
             Generic::from_str("fcntl(0</dev/null>, F_DUPFD, 10) = 10</dev/null>").unwrap();
@@ -543,6 +602,16 @@ mod tests {
         assert_eq!(Ret::Value(3).annotation(), None);
         assert_eq!(Ret::Errno(Errno::ENOENT).value(), None);
         assert_eq!(Ret::Errno(Errno::ENOENT).annotation(), None);
+        assert_eq!(Ret::Indeterminate { errno: None }.value(), None);
+        assert_eq!(
+            Ret::Indeterminate {
+                errno: Some(Errno(514)),
+            }
+            .value(),
+            None
+        );
+        assert_eq!(Ret::Indeterminate { errno: None }.annotation(), None);
+        assert_eq!(Ret::Indeterminate { errno: None }.description(), None);
     }
 
     #[test]
@@ -576,6 +645,8 @@ mod tests {
             "brk(NULL) = 0x5606be91b000",
             "umask(022) = 002",
             "umask(000) = 000",
+            "exit_group(0) = ?",
+            "rt_sigsuspend([], 8) = ? ERESTARTNOHAND",
         ] {
             assert_eq!(Generic::from_str(line).unwrap().to_string(), line);
         }

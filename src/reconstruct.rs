@@ -27,8 +27,10 @@
 //!
 //! A resumed call whose merged text the syscall decoder cannot read is
 //! dropped, exactly as the same call would be if `strace` had printed it on
-//! one line. This includes calls that resume with an indeterminate result,
-//! printed as `= ?`, such as restarted `rt_sigsuspend(2)` calls.
+//! one line. Calls that end with the indeterminate result `= ?` do parse,
+//! carried as [`crate::syscalls::Ret::Indeterminate`]; that includes a
+//! process that dies mid-call, whose merged text keeps the `<unfinished
+//! ...>` marker `strace` printed inside the arguments.
 
 use crate::Event;
 use crate::action::Action;
@@ -263,19 +265,61 @@ mod tests {
     }
 
     #[test]
-    fn unparseable_resumed_is_dropped() {
+    fn indeterminate_resumed_is_reconstructed() {
+        // A call interrupted by a signal that the kernel restarts resumes
+        // with the indeterminate result, which parses like any other.
         let mut reconstructor = Reconstructor::new();
         assert!(
             reconstructor
                 .push("1 1700000000.000000 rt_sigsuspend([], 8 <unfinished ...>")
                 .is_none()
         );
+        let event = reconstructor
+            .push(
+                "1 1700000000.000100 <... rt_sigsuspend resumed>) = ? \
+                 ERESTARTNOHAND (To be restarted if no handler)",
+            )
+            .unwrap();
+        assert_eq!(
+            event.action.to_string(),
+            "rt_sigsuspend([], 8) = ? ERESTARTNOHAND"
+        );
+    }
+
+    #[test]
+    fn tracee_dying_mid_call_is_reconstructed() {
+        // A process killed inside a call never resumes: strace prints a line
+        // that is resumed and unfinished at once, ending in `= ?`, and the
+        // merged call keeps the marker as a raw argument.
+        let mut reconstructor = Reconstructor::new();
         assert!(
             reconstructor
                 .push(
-                    "1 1700000000.000100 <... rt_sigsuspend resumed>) = ? \
-                     ERESTARTNOHAND (To be restarted if no handler)"
+                    "1 1700000000.000000 clock_nanosleep(CLOCK_MONOTONIC, 0, \
+                     {tv_sec=30, tv_nsec=0} <unfinished ...>"
                 )
+                .is_none()
+        );
+        let event = reconstructor
+            .push("1 1700000000.000100 <... clock_nanosleep resumed> <unfinished ...>) = ?")
+            .unwrap();
+        assert_eq!(
+            event.action.to_string(),
+            "clock_nanosleep(CLOCK_MONOTONIC, 0, {tv_sec=30, tv_nsec=0} <unfinished ...>) = ?"
+        );
+    }
+
+    #[test]
+    fn unparseable_resumed_is_dropped() {
+        let mut reconstructor = Reconstructor::new();
+        assert!(
+            reconstructor
+                .push("1 1700000000.000000 mystery(0x1 <unfinished ...>")
+                .is_none()
+        );
+        assert!(
+            reconstructor
+                .push("1 1700000000.000100 <... mystery resumed>, 0x2) = nonsense")
                 .is_none()
         );
     }
